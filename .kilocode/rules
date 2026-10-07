@@ -1,0 +1,52 @@
+# Project Rules - eKithab Audio Pipeline
+
+## Architecture
+- Decoupled monorepo: /client (Vite/React) and /server (Express/Node)
+- Client deployed on Vercel, Server deployed on Render
+- Supabase Free Tier for PostgreSQL + Storage
+- Gnani.ai timbre-v2.5 for TTS
+
+## API Contract (IMMUTABLE)
+POST /api/audio/synthesize
+Request: { chapterId, text, language, voiceProfile, speed }
+Response: { success, audioUrl, durationSeconds, alignment: [{ sentenceIndex, text, startTime, endTime }] }
+
+## Security Rules
+- All API keys in /server/.env only
+- Frontend never calls Gnani.ai or Supabase directly
+- Rate limit: 5 requests/min per IP
+- CORS restricted to Vercel frontend URL
+- Atomic credit deduction: calculate → check balance → deduct → call Gnani
+
+## Text Processing (Guardrails)
+- Chunk at punctuation, max 400 chars per Gnani request
+- Strip markdown: text.replace(/[#*`_\[\]]/g, '')
+- Code-switching: rely on Gnani's phonetic processing for en-IN
+- Alignment drift: normalize final endTime to actual buffer duration
+
+## UI/UX
+- Tailwind CSS + Shadcn/UI + Lucide React
+- Active text: text-primary font-bold bg-primary/10 rounded-sm px-1
+- Inactive text: text-muted-foreground
+- Floating playback controls pill
+- Keyboard accessible, 4.5:1 contrast minimum
+
+## File Structure
+/client/src/components/studio/AudioConfigModal.jsx
+/client/src/components/studio/CreditEstimateBadge.jsx
+/client/src/components/player/ReadAlongPlayer.jsx
+/client/src/components/player/TranscriptHighlighter.jsx
+/client/src/components/player/PlaybackControls.jsx
+/client/src/components/storefront/AudioStorefrontWidget.jsx
+/client/src/hooks/useAudioPlayer.js
+/client/src/services/api.js
+/client/src/App.jsx
+/client/src/main.jsx
+
+/server/src/config/gnani.js
+/server/src/config/supabase.js
+/server/src/services/gnaniService.js
+/server/src/services/textProcessor.js
+/server/src/services/storageService.js
+/server/src/routes/audioRoutes.js
+/server/src/index.js
