@@ -2,7 +2,7 @@
   "name": "server",
   "version": "1.0.0",
   "description": "eKithab Audio Pipeline - Backend API Server",
-  "type": "module",
+  "type": "commonjs",
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",
@@ -13,9 +13,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "@supabase/supabase-js": "^2.39.0",
-    "express-rate-limit": "^7.1.5",
-    "axios": "^1.6.2",
-    "uuid": "^9.0.1"
+    "node-fetch": "^2.7.0",
+    "express-rate-limit": "^7.1.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
