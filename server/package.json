@@ -15,7 +15,9 @@
     "@supabase/supabase-js": "^2.39.0",
     "express-rate-limit": "^7.1.5",
     "axios": "^1.6.2",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "gtts": "^0.2.1",
+    "music-metadata": "^10.4.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

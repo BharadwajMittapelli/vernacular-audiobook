@@ -1,14 +1,19 @@
 import { supabase, AUDIO_BUCKET } from '../config/supabase.js';
 import { v4 as uuidv4 } from 'uuid';
 
-export async function uploadAudio(audioBuffers, chapterId) {
-  const combinedBuffer = Buffer.concat(audioBuffers);
-  const fileName = `${chapterId}/${uuidv4()}.wav`;
+const FORMAT_MAP = {
+  mp3: { ext: 'mp3', contentType: 'audio/mpeg' },
+  wav: { ext: 'wav', contentType: 'audio/wav' },
+};
+
+export async function uploadAudio(audioBuffer, chapterId, format = 'wav') {
+  const { ext, contentType } = FORMAT_MAP[format] || FORMAT_MAP.wav;
+  const fileName = `${chapterId}/${uuidv4()}.${ext}`;
 
   const { error } = await supabase.storage
     .from(AUDIO_BUCKET)
-    .upload(fileName, combinedBuffer, {
-      contentType: 'audio/wav',
+    .upload(fileName, audioBuffer, {
+      contentType,
       upsert: false,
     });
 
@@ -16,6 +21,6 @@ export async function uploadAudio(audioBuffers, chapterId) {
     throw new Error(`Supabase upload failed: ${error.message}`);
   }
 
-  const { data } = supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName);
+  const { data } = await supabase.storage.from(AUDIO_BUCKET).getPublicUrl(fileName);
   return data.publicUrl;
 }
