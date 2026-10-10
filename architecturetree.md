@@ -1,39 +1,45 @@
-  
-\#. SYSTEM ARCHITECTURE & FILE TREE
+#. SYSTEM ARCHITECTURE & FILE TREE
 
-\`\`\`text  
-vernacular-audiobook/  
-├── .kilocode/  
-│   └── rules                     \# This master rule file  
-├── client/                        \# DEV A SCOPE  
+```text  
+ekithab-audio-pipeline/  
+├── .kilo/  
+│   └── rules                     # Master rule file  
+├── client/                        # DEV A SCOPE  
 │   ├── src/  
 │   │   ├── components/  
 │   │   │   ├── studio/  
-│   │   │   │   ├── AudioConfigModal.jsx       \# Voice/Language controls  
-│   │   │   │   └── CreditEstimateBadge.jsx    \# Real-time credit counter  
+│   │   │   │   ├── AudioConfigModal.tsx       # Voice/Language controls  
+│   │   │   │   └── CreditEstimateBadge.tsx    # Real-time credit counter  
 │   │   │   ├── player/  
-│   │   │   │   ├── ReadAlongPlayer.jsx        \# Main synced player  
-│   │   │   │   ├── TranscriptHighlighter.jsx  \# Sentence sync renderer  
-│   │   │   │   └── PlaybackControls.jsx       \# Play/Pause/Speed toggles  
+│   │   │   │   ├── ReadAlongPlayer.tsx           # Main synced player (consumes server alignment[])  
+│   │   │   │   ├── TranscriptHighlighter.tsx     # Sentence sync renderer  
+│   │   │   │   ├── PlaybackControls.tsx          # Play/Pause/Speed (playbackRate) toggles  
+│   │   │   │   └── ReadAlongPlayerErrorBoundary.tsx # Catches timestamp parse errors  
 │   │   │   └── storefront/  
-│   │   │       └── AudioStorefrontWidget.jsx  \# Embedded storefront widget  
+│   │   │       └── AudioStorefrontWidget.tsx  # Embedded storefront widget  
 │   │   ├── hooks/  
-│   │   │   └── useAudioPlayer.js              \# Web Audio API state hook  
+│   │   │   └── useAudioPlayer.ts              # HTMLAudioElement state hook + server alignment sync  
 │   │   ├── services/  
-│   │   │   └── api.js                         \# Axios/Fetch client  
-│   │   ├── App.jsx  
-│   │   └── main.jsx  
+│   │   │   └── api.ts                         # Axios/Fetch client (synthesize, fetchAudio, fetchCredits)  
+│   │   ├── App.tsx  
+│   │   └── main.tsx  
 │   └── package.json  
-└── server/                        \# DEV B SCOPE  
+└── server/                        # DEV B SCOPE  
     ├── src/  
     │   ├── config/  
-    │   │   ├── gnani.js          \# Gnani API credentials & endpoints  
-    │   │   └── supabase.js       \# Supabase client setup  
+    │   │   ├── gnani.ts          # Gnani API credentials & endpoints  
+    │   │   └── supabase.ts       # Supabase client setup  
     │   ├── services/  
-    │   │   ├── gnaniService.js   \# Timbre v2.5 wrapper  
-    │   │   ├── textProcessor.js  \# Markdown cleaner & sentence splitter  
-    │   │   └── storageService.js \# Supabase bucket upload handler  
+    │   │   ├── gnaniService.ts   # Timbre v2.5 wrapper  
+    │   │   ├── textProcessor.ts  # Markdown cleaner & sentence splitter  
+    │   │   ├── storageService.ts # Supabase bucket upload handler  
+    │   │   ├── audioStitcher.ts  # Concatenate chunk buffers + cumulative timestamps  
+    │   │   └── alignmentCalculator.ts # Build immutable alignment[] from chunks  
+    │   ├── middleware/  
+    │   │   ├── auth.ts           # Verify eKithab JWT  
+    │   │   └── creditGuard.ts    # Atomic credit deduction  
     │   ├── routes/  
-    │   │   └── audioRoutes.js    \# Express route handlers  
-    │   └── index.js  
+    │   │   └── audioRoutes.ts    # Express route handlers  
+    │   └── index.ts  
     └── package.json  
+```

@@ -1,52 +1,74 @@
 # Project Rules - eKithab Audio Pipeline
 
 ## Architecture
-- Decoupled monorepo: /client (Vite/React) and /server (Express/Node)
+- Decoupled monorepo: /client (Vite/React/TypeScript) and /server (Express/Node/TypeScript)
 - Client deployed on Vercel, Server deployed on Render
 - Supabase Free Tier for PostgreSQL + Storage
 - Gnani.ai timbre-v2.5 for TTS
 
 ## API Contract (IMMUTABLE)
 POST /api/audio/synthesize
-Request: { chapterId, text, language, voiceProfile, speed }
+Request: { chapterId, text, language, voiceProfile }
 Response: { success, audioUrl, durationSeconds, alignment: [{ sentenceIndex, text, startTime, endTime }] }
+
+GET /api/audio/:chapterId
+Response: { success, audioUrl, durationSeconds, alignment: [...] }
+
+GET /api/credits
+Headers: Authorization: Bearer <eKithab-JWT>
+Response: { balance: number }
 
 ## Security Rules
 - All API keys in /server/.env only
 - Frontend never calls Gnani.ai or Supabase directly
 - Rate limit: 5 requests/min per IP
 - CORS restricted to Vercel frontend URL
-- Atomic credit deduction: calculate → check balance → deduct → call Gnani
+- Atomic credit deduction: single UPDATE users SET credits = credits - $cost WHERE id = $uid AND credits >= $cost RETURNING credits
+- Auth: every /api/audio/* requires Authorization: Bearer <eKithab-JWT>
+- Idempotency: POST /api/audio/synthesize requires Idempotency-Key header (client UUID v4)
 
 ## Text Processing (Guardrails)
 - Chunk at punctuation, max 400 chars per Gnani request
 - Strip markdown: text.replace(/[#*`_\[\]]/g, '')
 - Code-switching: rely on Gnani's phonetic processing for en-IN
 - Alignment drift: normalize final endTime to actual buffer duration
+- Terminal seek: if currentTime > lastSentence.endTime, clamp and pause
 
 ## UI/UX
 - Tailwind CSS + Shadcn/UI + Lucide React
 - Active text: text-primary font-bold bg-primary/10 rounded-sm px-1
 - Inactive text: text-muted-foreground
-- Floating playback controls pill
+- Floating playback controls pill with playbackRate (1x, 1.5x, 2x)
 - Keyboard accessible, 4.5:1 contrast minimum
+- Player: HTMLAudioElement (not Web Audio API)
+- Speed: synthesis always 1.0x; client controls playbackRate
+
+## Precedence Rules (when docs conflict)
+- security.md > README.md
+- api.md > TechnicalDocument.md
+- guardrails.md > all implementation docs
 
 ## File Structure
-/client/src/components/studio/AudioConfigModal.jsx
-/client/src/components/studio/CreditEstimateBadge.jsx
-/client/src/components/player/ReadAlongPlayer.jsx
-/client/src/components/player/TranscriptHighlighter.jsx
-/client/src/components/player/PlaybackControls.jsx
-/client/src/components/storefront/AudioStorefrontWidget.jsx
-/client/src/hooks/useAudioPlayer.js
-/client/src/services/api.js
-/client/src/App.jsx
-/client/src/main.jsx
+/client/src/components/studio/AudioConfigModal.tsx
+/client/src/components/studio/CreditEstimateBadge.tsx
+/client/src/components/player/ReadAlongPlayer.tsx
+/client/src/components/player/TranscriptHighlighter.tsx
+/client/src/components/player/PlaybackControls.tsx
+/client/src/components/player/ReadAlongPlayerErrorBoundary.tsx
+/client/src/components/storefront/AudioStorefrontWidget.tsx
+/client/src/hooks/useAudioPlayer.ts
+/client/src/services/api.ts
+/client/src/App.tsx
+/client/src/main.tsx
 
-/server/src/config/gnani.js
-/server/src/config/supabase.js
-/server/src/services/gnaniService.js
-/server/src/services/textProcessor.js
-/server/src/services/storageService.js
-/server/src/routes/audioRoutes.js
-/server/src/index.js
+/server/src/config/gnani.ts
+/server/src/config/supabase.ts
+/server/src/services/gnaniService.ts
+/server/src/services/textProcessor.ts
+/server/src/services/storageService.ts
+/server/src/services/audioStitcher.ts
+/server/src/services/alignmentCalculator.ts
+/server/src/middleware/auth.ts
+/server/src/middleware/creditGuard.ts
+/server/src/routes/audioRoutes.ts
+/server/src/index.ts
