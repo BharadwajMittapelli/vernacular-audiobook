@@ -67,9 +67,36 @@ app.use('/api/audio', audioRouter);
 // metadata keyed by audio_generations.id (the unique generation PK).
 app.use('/api/storefront', storefrontRouter);
 
+// Skip async endpoint from global limiter; it has its own tighter limiter
+app.use('/api/audio/synthesize-async', rateLimit({
+  windowMs: 60 * 1000,
+  max: 2,
+  keyGenerator: (req) => req.ip,
+  message: { success: false, error: 'Too many bulk requests, please try again later' },
+}));
+
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ success: false, error: 'Internal server error' });
+});
+
+// Graceful shutdown: let in-flight jobs finish
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  try {
+    const { queue } = await import('./queues/synthesisQueue.js');
+    await queue.close();
+  } catch {}
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  try {
+    const { queue } = await import('./queues/synthesisQueue.js');
+    await queue.close();
+  } catch {}
+  process.exit(0);
 });
 
 app.listen(PORT, () => {

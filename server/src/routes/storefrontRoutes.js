@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { supabase } from '../config/supabase.js';
+import { resolveAudioUrl } from '../services/storageService.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -34,7 +35,7 @@ router.get('/embed/:generationId', embedLimiter, async (req, res) => {
 
     const { data, error } = await supabase
       .from('audio_generations')
-      .select('id, chapter_id, audio_url, duration, alignment')
+      .select('id, chapter_id, audio_url, audio_path, duration, alignment')
       .eq('id', generationId)
       .eq('status', 'completed')
       .maybeSingle();
@@ -44,7 +45,12 @@ router.get('/embed/:generationId', embedLimiter, async (req, res) => {
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
 
-    if (!data || !data.audio_url) {
+    if (!data) {
+      return res.status(404).json({ success: false, error: 'Not found' });
+    }
+
+    const audioUrl = await resolveAudioUrl(data);
+    if (!audioUrl) {
       return res.status(404).json({ success: false, error: 'Not found' });
     }
 
@@ -52,7 +58,7 @@ router.get('/embed/:generationId', embedLimiter, async (req, res) => {
       success: true,
       generationId: data.id,
       chapterId: data.chapter_id,
-      audioUrl: data.audio_url,
+      audioUrl,
       durationSeconds: data.duration,
       alignment: data.alignment || [],
     });

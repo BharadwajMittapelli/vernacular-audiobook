@@ -12,6 +12,17 @@
         "DEFAULT_MINIMUM_TOKENS": "{{DEFAULT_MINIMUM_TOKENS}}"
       },
       "enabled": true
+    },
+    "supabase": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@supabase/mcp-server-supabase@0.5.5",
+        "--access-token",
+        "${SUPABASE_ACCESS_TOKEN}"
+      ],
+      "enabled": true
     }
   }
 }
