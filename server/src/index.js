@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { authMiddleware } from './middleware/auth.js';
 import audioRouter from './routes/audioRoutes.js';
 import storefrontRouter from './routes/storefrontRoutes.js';
+import voiceRouter from './routes/voiceRoutes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -51,7 +52,7 @@ const apiLimiter = rateLimit({
   // Use X-Forwarded-For header when behind proxy
   keyGenerator: (req) => req.ip,
   // Storefront embed has its own 60/min limiter on the router.
-  skip: (req) => req.path.startsWith('/api/storefront') || req.path.startsWith('/api/audio/synthesize-async'),
+  skip: (req) => req.path.startsWith('/api/storefront') || req.path.startsWith('/api/audio/synthesize-async') || req.path.startsWith('/api/voices'),
 });
 
 app.use(apiLimiter);
@@ -75,6 +76,9 @@ app.use('/api/audio', audioRouter);
 // Public storefront embed API. No authMiddleware; embed is read-only public
 // metadata keyed by audio_generations.id (the unique generation PK).
 app.use('/api/storefront', storefrontRouter);
+
+// Public voice catalog. No auth; CORS stays frontend-restricted (not wildcard).
+app.use('/api/voices', voiceRouter);
 
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
