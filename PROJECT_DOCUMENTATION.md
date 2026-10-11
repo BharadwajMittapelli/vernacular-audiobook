@@ -138,10 +138,10 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 **External Integration: Gnani.ai Timbre v2.5**  
 - **Endpoint:** `POST https://api.vachana.ai/api/v1/tts/inference`  
 - **Headers:** `X-API-Key-ID: <GNANI_KEY>`, `Content-Type: application/json`  
-- **Payload Constraints:** Maximum 500 characters per request. (Express must chunk longer texts).
+- **Payload Constraints:** Maximum 400 characters per chunk. (Express must chunk longer texts).
 
 **Internal API: POST /api/audio/synthesize**  
-- **Request Payload:** `{ chapterId, text, language, voiceProfile }`  
+- **Request Payload:** `{ chapterId, text, language, voiceProfile, speed }`  
 - **Response Payload:** `{ success, audioUrl, durationSeconds, alignment: [{ sentenceIndex, text, startTime, endTime }] }`
 - **Idempotency:** Require `Idempotency-Key` header (client-generated UUID v4). Duplicate key returns existing record without re-processing.
 - **Speed:** Synthesis always runs at 1.0x. Playback speed is controlled client-side via `HTMLAudioElement.playbackRate`.
@@ -173,7 +173,7 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
    If row count = 0, reject with HTTP 402. No separate check-then-deduct.
 4. **CORS:** Express server must restrict `Access-Control-Allow-Origin` strictly to the deployed Vercel frontend URL.  
 5. **Auth:** Every `/api/audio/*` request requires `Authorization: Bearer <eKithab-JWT>`. Middleware verifies signature and attaches `req.user.id`.  
-6. **Idempotency:** `POST /api/audio/synthesize` requires `Idempotency-Key` header. Duplicate keys return existing `audio_generations` row (status check) without re-processing.
+6. **Idempotency:** `POST /api/audio/synthesize` requires `Idempotency-Key` header. Duplicate keys return existing `audio_generations` row (status check) without re-processing. The server inserts a `processing` placeholder row *before* running synthesis so a concurrent duplicate hits the unique constraint and polls.
 
 **Error Boundaries:**  
 - Gnani 5xx errors must return HTTP 502 (Bad Gateway) to the client. Do not crash the Node process.  
@@ -253,39 +253,40 @@ ekithab-audio-pipeline/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── studio/
-│   │   │   │   ├── AudioConfigModal.tsx       # Voice/Language controls
-│   │   │   │   └── CreditEstimateBadge.tsx    # Real-time credit counter
+│   │   │   │   ├── AudioConfigModal.jsx       # Voice/Language controls
+│   │   │   │   └── CreditEstimateBadge.jsx    # Real-time credit counter
 │   │   │   ├── player/
-│   │   │   │   ├── ReadAlongPlayer.tsx           # Main synced player (consumes server alignment[])
-│   │   │   │   ├── TranscriptHighlighter.tsx     # Sentence sync renderer
-│   │   │   │   ├── PlaybackControls.tsx          # Play/Pause/Speed (playbackRate) toggles
-│   │   │   │   └── ReadAlongPlayerErrorBoundary.tsx # Catches timestamp parse errors
+│   │   │   │   ├── ReadAlongPlayer.jsx           # Main synced player (consumes server alignment[])
+│   │   │   │   ├── TranscriptHighlighter.jsx     # Sentence sync renderer
+│   │   │   │   ├── PlaybackControls.jsx          # Play/Pause/Speed (playbackRate) toggles
+│   │   │   │   └── ReadAlongPlayerErrorBoundary.jsx # Catches timestamp parse errors
 │   │   │   └── storefront/
-│   │   │       └── AudioStorefrontWidget.tsx  # Embedded storefront widget
+│   │   │       └── AudioStorefrontWidget.jsx  # Embedded storefront widget
 │   │   ├── hooks/
-│   │   │   └── useAudioPlayer.ts              # HTMLAudioElement state hook + server alignment sync
+│   │   │   └── useAudioPlayer.jsx              # HTMLAudioElement state hook + server alignment sync
 │   │   ├── services/
-│   │   │   └── api.ts                         # Axios/Fetch client (synthesize, fetchAudio, fetchCredits)
-│   │   ├── App.tsx
-│   │   └── main.tsx
+│   │   │   └── api.js                         # Fetch client (synthesize)
+│   │   ├── App.jsx
+│   │   └── main.jsx
 │   └── package.json
 └── server/                        # DEV B SCOPE
     ├── src/
     │   ├── config/
-    │   │   ├── gnani.ts          # Gnani API credentials & endpoints
-    │   │   └── supabase.ts       # Supabase client setup
+    │   │   ├── supabase.js       # Supabase client setup + AUDIO_BUCKET
     │   ├── services/
-    │   │   ├── gnaniService.ts   # Timbre v2.5 wrapper
-    │   │   ├── textProcessor.ts  # Markdown cleaner & sentence splitter
-    │   │   ├── storageService.ts # Supabase bucket upload handler
-    │   │   ├── audioStitcher.ts  # Concatenate chunk buffers + cumulative timestamps
-    │   │   └── alignmentCalculator.ts # Build immutable alignment[] from chunks
+    │   │   ├── gnaniService.js   # Timbre v2.5 wrapper
+    │   │   ├── textProcessor.js  # Markdown cleaner & sentence splitter
+    │   │   ├── storageService.js # Supabase bucket upload handler
+    │   │   ├── audioStitcher.js  # Concatenate chunk buffers + cumulative timestamps
+    │   │   └── alignmentCalculator.js # Build immutable alignment[] from chunks
     │   ├── middleware/
-    │   │   ├── auth.ts           # Verify eKithab JWT
-    │   │   └── creditGuard.ts    # Atomic credit deduction
+    │   │   ├── auth.js           # Verify eKithab JWT
+    │   │   └── creditGuard.js    # Atomic credit deduction
     │   ├── routes/
-    │   │   └── audioRoutes.ts    # Express route handlers
-    │   └── index.ts
+    │   │   └── audioRoutes.js    # Express route handlers
+    │   └── index.js
+    ├── migrations/
+    │   └── 001_align_audio_generations.sql  # Idempotent schema alignment
     └── package.json
 ```
 
@@ -350,7 +351,8 @@ Request:
   "chapterId": "string",
   "text": "string",
   "language": "string",
-  "voiceProfile": "string"
+  "voiceProfile": "string",
+  "speed": 1.0
 }
 ```
 
