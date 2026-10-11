@@ -5,6 +5,11 @@ import { synthesizeText } from '../services/ttsProvider.js';
 import { uploadAudio } from '../services/storageService.js';
 import { supabase } from '../config/supabase.js';
 import { creditGuardMiddleware } from '../middleware/creditGuard.js';
+import {
+  deductCredits,
+  refundCredits,
+  InsufficientCreditsError,
+} from '../services/creditService.js';
 
 const router = express.Router();
 
@@ -165,6 +170,27 @@ router.post(
         return res.status(500).json({ success: false, error: 'Failed to record generation' });
       }
 
+      // Placeholder insert won the idempotency race. Only this winning request
+      // deducts; concurrent losers polled above and paid nothing. Deduct BEFORE
+      // any TTS/CPU/API burn so unpaid requests never trigger synthesis.
+      try {
+        const remaining = await deductCredits(userId, cleanText.length, generationId);
+        req.remainingCredits = remaining;
+      } catch (err) {
+        await supabase
+          .from('audio_generations')
+          .update({ status: 'failed' })
+          .eq('id', inserted.id);
+        if (err instanceof InsufficientCreditsError) {
+          return res.status(402).json({
+            success: false,
+            error: 'Insufficient credits. Please top up your wallet.',
+          });
+        }
+        console.error('Deduction error:', err);
+        return res.status(500).json({ success: false, error: 'Credit deduction failed' });
+      }
+
       let audioUrl;
       let totalDuration;
       let alignment;
@@ -187,6 +213,16 @@ router.post(
           })
           .eq('id', inserted.id);
       } catch (err) {
+        try {
+          await refundCredits(userId, cleanText.length, generationId);
+        } catch (refundErr) {
+          console.error('CRITICAL: refund failed, manual reconciliation needed', {
+            userId,
+            generationId,
+            credits: req.creditsUsed,
+            error: refundErr.message,
+          });
+        }
         await supabase
           .from('audio_generations')
           .update({ status: 'failed' })

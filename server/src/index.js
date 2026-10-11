@@ -6,6 +6,7 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { authMiddleware } from './middleware/auth.js';
 import audioRouter from './routes/audioRoutes.js';
+import storefrontRouter from './routes/storefrontRoutes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -19,12 +20,22 @@ const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5175';
 // Without this, rate limiter sees all requests as coming from the load balancer IP
 app.set('trust proxy', 1);
 
-app.use(cors({
-  origin: allowedOrigin,
-  credentials: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
-}));
+// cors() has no `skip` option and app-level cors(restricted) always runs for
+// every request. Use a per-request delegate so /api/storefront gets wildcard
+// CORS (public iframe embeds) while the rest of the app stays restricted.
+const corsDelegate = (req, callback) => {
+  if (req.path.startsWith('/api/storefront')) {
+    return callback(null, { origin: '*' });
+  }
+  callback(null, {
+    origin: allowedOrigin,
+    credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+  });
+};
+
+app.use(cors(corsDelegate));
 
 app.use(express.json({ limit: '1mb' }));
 
@@ -39,6 +50,8 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   // Use X-Forwarded-For header when behind proxy
   keyGenerator: (req) => req.ip,
+  // Storefront embed has its own 60/min limiter on the router.
+  skip: (req) => req.path.startsWith('/api/storefront'),
 });
 
 app.use(apiLimiter);
@@ -49,6 +62,10 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/audio', authMiddleware);
 app.use('/api/audio', audioRouter);
+
+// Public storefront embed API. No authMiddleware; embed is read-only public
+// metadata keyed by audio_generations.id (the unique generation PK).
+app.use('/api/storefront', storefrontRouter);
 
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
