@@ -91,18 +91,9 @@ router.post(
       const userId = req.user?.id || '00000000-0000-0000-0000-000000000001';
       const creditsUsed = req.creditsUsed || 0;
 
-      const { audioBuffer, totalDuration, alignment } = await synthesizeText(
-        cleanText,
-        language,
-        voiceProfile,
-        speed
-      );
-
-      const isGtts = process.env.TTS_PROVIDER === 'gtts';
-      const audioUrl = await uploadAudio(audioBuffer, chapterId, isGtts ? 'mp3' : 'wav');
-
-      // Insert with idempotency_key — relies on UNIQUE constraint for race safety
-      // Use 'processing' status initially so concurrent requests can detect in-progress work
+      // Insert a 'processing' placeholder BEFORE synthesis so a concurrent
+      // request with the same Idempotency-Key hits the unique constraint and
+      // polls instead of duplicating expensive TTS work.
       const { data: inserted, error: insertError } = await supabase
         .from('audio_generations')
         .insert({
@@ -110,10 +101,6 @@ router.post(
           user_id: userId,
           chapter_id: chapterId,
           language,
-          audio_url: audioUrl,
-          duration: totalDuration,
-          credits_used: creditsUsed,
-          alignment,
           idempotency_key: idempotencyKey,
           status: 'processing',
         })
@@ -122,7 +109,6 @@ router.post(
 
       // Handle unique constraint violation (race condition)
       if (insertError && insertError.code === '23505' && insertError.message.includes('idempotency_key')) {
-        // Another request is processing — poll until completion or failure
         console.log(`[Idempotency] Race detected for key ${idempotencyKey}, polling...`);
 
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -157,7 +143,6 @@ router.post(
                 alignment: record.alignment || [],
               });
             }
-            // Record marked completed but no URL yet — keep polling
             console.warn(`[Idempotency] Record completed but audio_url missing, continuing poll`);
           } else if (record.status === 'failed') {
             console.error(`[Idempotency] Primary request failed`);
@@ -166,10 +151,8 @@ router.post(
               error: 'Synthesis failed on primary request.',
             });
           }
-          // status === 'processing' or 'pending' — continue polling
         }
 
-        // Max attempts reached without completion
         console.error(`[Idempotency] Polling timeout after ${MAX_ATTEMPTS} attempts for key ${idempotencyKey}`);
         return res.status(504).json({
           success: false,
@@ -182,15 +165,33 @@ router.post(
         return res.status(500).json({ success: false, error: 'Failed to record generation' });
       }
 
-      // Update status to completed (success path — we won the race)
+      let audioUrl;
+      let totalDuration;
+      let alignment;
       try {
+        const result = await synthesizeText(cleanText, language, voiceProfile, speed);
+        totalDuration = result.totalDuration;
+        alignment = result.alignment;
+
+        const isGtts = process.env.TTS_PROVIDER === 'gtts';
+        audioUrl = await uploadAudio(result.audioBuffer, chapterId, isGtts ? 'mp3' : 'wav');
+
         await supabase
           .from('audio_generations')
-          .update({ status: 'completed' })
+          .update({
+            audio_url: audioUrl,
+            duration: totalDuration,
+            credits_used: creditsUsed,
+            alignment,
+            status: 'completed',
+          })
           .eq('id', inserted.id);
-      } catch (updateError) {
-        // Non-fatal: record exists with audio_url, status will be 'processing' but data is complete
-        console.warn('Failed to update status to completed:', updateError.message);
+      } catch (err) {
+        await supabase
+          .from('audio_generations')
+          .update({ status: 'failed' })
+          .eq('id', inserted.id);
+        throw err;
       }
 
       res.json({
