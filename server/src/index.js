@@ -51,10 +51,19 @@ const apiLimiter = rateLimit({
   // Use X-Forwarded-For header when behind proxy
   keyGenerator: (req) => req.ip,
   // Storefront embed has its own 60/min limiter on the router.
-  skip: (req) => req.path.startsWith('/api/storefront'),
+  skip: (req) => req.path.startsWith('/api/storefront') || req.path.startsWith('/api/audio/synthesize-async'),
 });
 
 app.use(apiLimiter);
+
+// Bulk endpoint gets its own tighter 2/min bucket; mount BEFORE the router so
+// it actually runs, and apiLimiter skips this path above.
+app.use('/api/audio/synthesize-async', rateLimit({
+  windowMs: 60 * 1000,
+  max: 2,
+  keyGenerator: (req) => req.ip,
+  message: { success: false, error: 'Too many bulk requests, please try again later' },
+}));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -66,14 +75,6 @@ app.use('/api/audio', audioRouter);
 // Public storefront embed API. No authMiddleware; embed is read-only public
 // metadata keyed by audio_generations.id (the unique generation PK).
 app.use('/api/storefront', storefrontRouter);
-
-// Skip async endpoint from global limiter; it has its own tighter limiter
-app.use('/api/audio/synthesize-async', rateLimit({
-  windowMs: 60 * 1000,
-  max: 2,
-  keyGenerator: (req) => req.ip,
-  message: { success: false, error: 'Too many bulk requests, please try again later' },
-}));
 
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);

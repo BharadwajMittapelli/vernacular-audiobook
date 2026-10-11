@@ -31,12 +31,17 @@ export async function synthesizeSpeech(text, language, voice, speed = 1.0) {
       timestamps: data.timestamps || [],
     };
   } catch (error) {
+    // Attach classification so ttsProvider can decide fallback eligibility.
     if (error.response) {
-      throw new Error(
+      const err = new Error(
         `Gnani API error ${error.response.status}: ${JSON.stringify(error.response.data)}`
       );
+      err.httpStatus = error.response.status;
+      throw err;
     }
-    throw new Error(`Gnani API request failed: ${error.message}`);
+    const err = new Error(`Gnani API request failed: ${error.message}`);
+    err.retryableCode = error.code;
+    throw err;
   }
 }
 

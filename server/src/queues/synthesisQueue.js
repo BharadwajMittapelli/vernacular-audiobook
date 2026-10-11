@@ -77,6 +77,7 @@ if (Queue && redisUrl) {
 async function synthesizeChapterWorker(jobData) {
   const {
     generationId,
+    creditsRefId,
     chapterId,
     text,
     language,
@@ -100,11 +101,14 @@ async function synthesizeChapterWorker(jobData) {
   }
 
   const cleanText = stripMarkdown(text);
+  // Reclaimed failed rows arrive with a fresh creditsRefId; originals derive
+  // their ledger ref from generationId. Deduct and refund must use the same ref.
+  const refId = creditsRefId || generationId;
 
   // Atomic credit deduction (same rule as sync route)
   let remaining;
   try {
-    remaining = await deductCredits(userId, cleanText.length, generationId);
+    remaining = await deductCredits(userId, cleanText.length, refId);
   } catch (err) {
     if (err.name === 'InsufficientCreditsError') {
       await supabase
@@ -129,11 +133,12 @@ async function synthesizeChapterWorker(jobData) {
     // ponytail: hard-gate prevents corrupted TTS output from reaching CDN
     auditAudio(result.audioBuffer, cleanText, totalDuration);
 
-    const isGtts = process.env.TTS_PROVIDER === 'gtts';
+    // Format follows the actual bytes: a runtime gnani→gtts fallback
+    // returns source='gtts' (MP3) even while TTS_PROVIDER says gnani.
     const { audioPath, signedAudioUrl } = await uploadAudio(
       result.audioBuffer,
       chapterId,
-      isGtts ? 'mp3' : 'wav'
+      result.source === 'gtts' ? 'mp3' : 'wav'
     );
 
     await supabase
@@ -163,7 +168,7 @@ async function synthesizeChapterWorker(jobData) {
     }
   } catch (err) {
     try {
-      await refundCredits(userId, cleanText.length, generationId);
+      await refundCredits(userId, cleanText.length, refId);
     } catch (refundErr) {
       console.error('CRITICAL: async refund failed, manual reconciliation needed', {
         userId,

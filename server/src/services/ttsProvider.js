@@ -81,7 +81,10 @@ async function synthesizeWithGnani(text, language, voice, speed = 1.0) {
       allTimestamps.push(...adjustedTimestamps);
       timeOffset += chunkDuration;
     } catch (error) {
-      throw new Error(`Gnani chunk synthesis failed: ${error.message}`);
+      const wrapped = new Error(`Gnani chunk synthesis failed: ${error.message}`);
+      wrapped.retryableCode = error.retryableCode;
+      wrapped.httpStatus = error.httpStatus;
+      throw wrapped;
     }
   }
 
@@ -102,11 +105,27 @@ async function synthesizeWithGnani(text, language, voice, speed = 1.0) {
   };
 }
 
+// Only transient failure classes fall back: network errors and 5xx. 4xx is a
+// config/payload bug (bad key, malformed text) and must fail hard.
+const RETRYABLE_CODES = new Set(['ECONNABORTED', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
+
+function isRetryableTtsFailure(err) {
+  return RETRYABLE_CODES.has(err.retryableCode) || (typeof err.httpStatus === 'number' && err.httpStatus >= 500);
+}
+
+export { isRetryableTtsFailure };
+
 export async function synthesizeText(text, language, voice, speed = 1.0) {
   const provider = process.env.TTS_PROVIDER || 'gtts';
 
   if (provider === 'gnani' && process.env.GNANI_API_KEY_ID) {
-    return await synthesizeWithGnani(text, language, voice, speed);
+    try {
+      return await synthesizeWithGnani(text, language, voice, speed);
+    } catch (err) {
+      if (process.env.TTS_FALLBACK_ENABLED === 'false' || !isRetryableTtsFailure(err)) throw err;
+      console.warn(`[TTS] Primary provider failed, falling back to gTTS: ${err.message}`);
+      return await synthesizeWithGtts(text, language, voice, speed);
+    }
   }
 
   return await synthesizeWithGtts(text, language, voice, speed);

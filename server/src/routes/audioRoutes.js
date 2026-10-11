@@ -31,8 +31,8 @@ router.get('/:chapterId', async (req, res) => {
 
     const { data, error } = await supabase
       .from('audio_generations')
-      .select('audio_url, duration, alignment, language, chapter_id')
-      .eq('chapter_id', chapterId)
+        .select('audio_url, audio_path, duration, alignment, language, chapter_id')
+        .eq('chapter_id', chapterId)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -84,7 +84,7 @@ router.post(
       // First, try to find existing completed generation (fast path)
       const { data: existing } = await supabase
         .from('audio_generations')
-        .select('audio_url, duration, alignment')
+        .select('audio_url, audio_path, duration, alignment')
         .eq('idempotency_key', idempotencyKey)
         .eq('status', 'completed')
         .limit(1)
@@ -125,64 +125,105 @@ router.post(
         .single();
 
       // Handle unique constraint violation (race condition)
+      let claimedRow = null;
+
       if (insertError && insertError.code === '23505' && insertError.message.includes('idempotency_key')) {
-        console.log(`[Idempotency] Race detected for key ${idempotencyKey}, polling...`);
+        console.log(`[Idempotency] Race detected for key ${idempotencyKey}`);
 
-        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-          await sleep(POLL_INTERVAL_MS);
+        const { data: raced } = await supabase
+          .from('audio_generations')
+          .select('id, status, audio_url, audio_path, duration, alignment')
+          .eq('idempotency_key', idempotencyKey)
+          .maybeSingle();
 
-          const { data: record, error: pollError } = await supabase
-            .from('audio_generations')
-            .select('audio_url, duration, alignment, status')
-            .eq('idempotency_key', idempotencyKey)
-            .limit(1)
-            .single();
-
-          if (pollError) {
-            console.warn(`[Idempotency] Poll attempt ${attempt}/${MAX_ATTEMPTS} failed:`, pollError.message);
-            continue;
-          }
-
-          if (!record) {
-            console.warn(`[Idempotency] Poll attempt ${attempt}/${MAX_ATTEMPTS}: record not found yet`);
-            continue;
-          }
-
-          console.log(`[Idempotency] Poll attempt ${attempt}/${MAX_ATTEMPTS}: status=${record.status}`);
-
-          if (record.status === 'completed') {
-            const audioUrl = await resolveAudioUrl(record);
-            if (!audioUrl) {
-              console.warn(`[Idempotency] Record completed but audio_url missing, continuing poll`);
-              continue;
-            }
-            console.log(`[Idempotency] Primary request completed, returning result`);
+        if (raced?.status === 'completed') {
+          const cachedUrl = await resolveAudioUrl(raced);
+          if (cachedUrl) {
             return res.json({
               success: true,
-              audioUrl,
-              durationSeconds: record.duration,
-              alignment: record.alignment || [],
-            });
-          } else if (record.status === 'failed') {
-            console.error(`[Idempotency] Primary request failed`);
-            return res.status(502).json({
-              success: false,
-              error: 'Synthesis failed on primary request.',
+              audioUrl: cachedUrl,
+              durationSeconds: raced.duration,
+              alignment: raced.alignment || [],
             });
           }
         }
 
-        console.error(`[Idempotency] Polling timeout after ${MAX_ATTEMPTS} attempts for key ${idempotencyKey}`);
-        return res.status(504).json({
-          success: false,
-          error: 'Synthesis timed out waiting for concurrent request.',
-        });
+        // Claim a previously-failed row for retry. Conditional on status='failed'
+        // so concurrent claimers serialize; losers fall through to polling.
+        // Deduction keeps the fresh generationId as p_ref_id: reusing the old
+        // row id as ledger ref would trip refund_credits' ALREADY_REFUNDED
+        // guard on a second failure and strand the user's credits.
+        if (raced?.status === 'failed') {
+          const { data: claimed } = await supabase
+            .from('audio_generations')
+            .update({ status: 'processing' })
+            .eq('id', raced.id)
+            .eq('status', 'failed')
+            .select('id')
+            .maybeSingle();
+          claimedRow = claimed;
+        }
+
+        if (!claimedRow) {
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            await sleep(POLL_INTERVAL_MS);
+
+            const { data: record, error: pollError } = await supabase
+              .from('audio_generations')
+              .select('audio_url, audio_path, duration, alignment, status')
+              .eq('idempotency_key', idempotencyKey)
+              .limit(1)
+              .single();
+
+            if (pollError) {
+              console.warn(`[Idempotency] Poll attempt ${attempt}/${MAX_ATTEMPTS} failed:`, pollError.message);
+              continue;
+            }
+
+            if (!record) {
+              console.warn(`[Idempotency] Poll attempt ${attempt}/${MAX_ATTEMPTS}: record not found yet`);
+              continue;
+            }
+
+            console.log(`[Idempotency] Poll attempt ${attempt}/${MAX_ATTEMPTS}: status=${record.status}`);
+
+            if (record.status === 'completed') {
+              const audioUrl = await resolveAudioUrl(record);
+              if (!audioUrl) {
+                console.warn(`[Idempotency] Record completed but audio_url missing, continuing poll`);
+                continue;
+              }
+              console.log(`[Idempotency] Primary request completed, returning result`);
+              return res.json({
+                success: true,
+                audioUrl,
+                durationSeconds: record.duration,
+                alignment: record.alignment || [],
+              });
+            } else if (record.status === 'failed') {
+              console.error(`[Idempotency] Primary request failed`);
+              return res.status(502).json({
+                success: false,
+                error: 'Synthesis failed on primary request.',
+              });
+            }
+          }
+
+          console.error(`[Idempotency] Polling timeout after ${MAX_ATTEMPTS} attempts for key ${idempotencyKey}`);
+          return res.status(504).json({
+            success: false,
+            error: 'Synthesis timed out waiting for concurrent request.',
+          });
+        }
       }
 
-      if (insertError) {
+      if (insertError && !claimedRow) {
         console.error('DB insert error:', insertError);
         return res.status(500).json({ success: false, error: 'Failed to record generation' });
       }
+
+      // Update targets the placeholder row or the reclaimed failed row.
+      const targetRowId = claimedRow?.id ?? inserted.id;
 
       // Placeholder insert won the idempotency race. Only this winning request
       // deducts; concurrent losers polled above and paid nothing. Deduct BEFORE
@@ -194,7 +235,7 @@ router.post(
         await supabase
           .from('audio_generations')
           .update({ status: 'failed' })
-          .eq('id', inserted.id);
+          .eq('id', targetRowId);
         if (err instanceof InsufficientCreditsError) {
           return res.status(402).json({
             success: false,
@@ -216,8 +257,9 @@ router.post(
         // ponytail: hard-gate prevents corrupted TTS output from reaching CDN
         auditAudio(result.audioBuffer, cleanText, totalDuration);
 
-        const isGtts = process.env.TTS_PROVIDER === 'gtts';
-        const { audioPath, signedAudioUrl } = await uploadAudio(result.audioBuffer, chapterId, isGtts ? 'mp3' : 'wav');
+        // Format follows the actual bytes: a runtime gnani→gtts fallback
+        // returns source='gtts' (MP3) even while TTS_PROVIDER says gnani.
+        const { audioPath, signedAudioUrl } = await uploadAudio(result.audioBuffer, chapterId, result.source === 'gtts' ? 'mp3' : 'wav');
         audioUrl = signedAudioUrl;
 
         await supabase
@@ -230,7 +272,7 @@ router.post(
             alignment,
             status: 'completed',
           })
-          .eq('id', inserted.id);
+          .eq('id', targetRowId);
       } catch (err) {
         try {
           await refundCredits(userId, cleanText.length, generationId);
@@ -245,7 +287,7 @@ router.post(
         await supabase
           .from('audio_generations')
           .update({ status: 'failed' })
-          .eq('id', inserted.id);
+          .eq('id', targetRowId);
         throw err;
       }
 
@@ -293,7 +335,11 @@ router.post('/synthesize-async', async (req, res) => {
     for (const ch of chapters) {
       totalCost += calculateCost(stripMarkdown(ch.text).length);
     }
-    const { data: balanceData } = await supabase.rpc('get_user_balance', { p_user_id: userId });
+    const { data: balanceData, error: balanceError } = await supabase.rpc('get_user_balance', { p_user_id: userId });
+    if (balanceError) {
+      console.error('Balance pre-check failed:', balanceError);
+      return res.status(500).json({ success: false, error: 'Credit balance check failed' });
+    }
     const availableBalance = balanceData ?? 0;
     if (availableBalance < totalCost) {
       return res.status(402).json({
@@ -322,6 +368,7 @@ router.post('/synthesize-async', async (req, res) => {
 
     // Insert placeholder rows and enqueue jobs
     const queuedJobs = [];
+    let cachedCount = 0;
     for (const ch of chapters) {
       const generationId = uuidv4();
       const scopedKey = `${bookId}-${ch.idempotencyKey}`;
@@ -342,19 +389,33 @@ router.post('/synthesize-async', async (req, res) => {
 
       if (insertErr) {
         if (insertErr.code === '23505' && insertErr.message.includes('idempotency_key')) {
-          // Reuse existing row (already queued or processing)
           const { data: existing } = await supabase
             .from('audio_generations')
             .select('id, status')
             .eq('idempotency_key', scopedKey)
-            .single();
+            .maybeSingle();
+
           if (existing?.status === 'processing') {
             queuedJobs.push({ generationId: existing.id, chapter: ch });
-          } else {
-            queuedJobs.push({ generationId: generationId, chapter: ch }); // retry
+          } else if (existing?.status === 'failed') {
+            // Conditional claim so concurrent resubmits do not both re-enqueue.
+            const { data: reclaimed } = await supabase
+              .from('audio_generations')
+              .update({ status: 'processing', user_id: userId, book_id: bookId })
+              .eq('id', existing.id)
+              .eq('status', 'failed')
+              .select('id')
+              .maybeSingle();
+            if (reclaimed) {
+              // Fresh ledger ref: the old row id was already refunded once and
+              // refund_credits' ALREADY_REFUNDED guard would strand a re-failure.
+              queuedJobs.push({ generationId: reclaimed.id, creditsRefId: uuidv4(), chapter: ch });
+            }
+          } else if (existing?.status === 'completed') {
+            cachedCount++; // already billed + synthesized; skip enqueue
           }
         } else {
-          console.warn(`[Async] Failed to insert placeholder for ${ch.chapterId}:`, insertErr.message);
+          console.error(`[Async] Failed to insert placeholder for ${ch.chapterId}:`, insertErr.message);
         }
         continue;
       }
@@ -363,9 +424,10 @@ router.post('/synthesize-async', async (req, res) => {
     }
 
     // Enqueue all valid jobs
-    for (const { generationId, chapter } of queuedJobs) {
+    for (const { generationId, chapter, creditsRefId } of queuedJobs) {
       await queue.add({
         generationId,
+        creditsRefId,
         chapterId: chapter.chapterId,
         text: chapter.text,
         language: chapter.language,
@@ -382,6 +444,7 @@ router.post('/synthesize-async', async (req, res) => {
       bookId,
       totalChapters: chapters.length,
       queued: queuedJobs.length,
+      cached: cachedCount,
       status: 'queued',
     });
   } catch (error) {

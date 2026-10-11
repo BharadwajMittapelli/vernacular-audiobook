@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { supabase } from '../config/supabase.js';
 import { resolveAudioUrl } from '../services/storageService.js';
@@ -20,7 +19,8 @@ const embedLimiter = rateLimit({
 
 const router = express.Router();
 
-router.use(cors({ origin: '*' }));
+// Wildcard CORS for /api/storefront is applied by the app-level delegate in
+// index.js; no per-router cors() here (duplicate ACAO headers otherwise).
 
 // GET /api/storefront/embed/:generationId — public read-only playback metadata
 // for a specific completed generation. Keyed by the audio_generations primary

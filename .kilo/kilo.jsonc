@@ -18,11 +18,8 @@
       "command": [
         "npx",
         "-y",
-        "@supabase/mcp-server-supabase@0.5.5",
-        "--access-token",
-        "${SUPABASE_ACCESS_TOKEN}"
-      ],
-      "enabled": true
+        "@supabase/mcp-server-supabase@0.5.5"
+      ]
     }
   }
 }
