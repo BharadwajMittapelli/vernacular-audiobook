@@ -113,14 +113,15 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 **Table 2: audio_generations**  
 - `id` (UUID, PK) - Unique generation ID  
 - `user_id` (UUID, FK) - Creator ID  
+- `book_id` (String, Index) - Reference to book for async aggregation  
 - `chapter_id` (String, Index) - Reference to eKithab chapter  
+- `audio_path` (String) - Storage path inside Supabase bucket (not a public URL)  
 - `language` (String) - e.g., 'hi-IN'  
-- `audio_url` (String) - Supabase public bucket URL  
 - `duration` (Float) - Total audio duration in seconds  
 - `credits_used` (Integer) - Cost of this generation  
 - `alignment` (JSONB) - Sentence-level timestamps `[{ sentenceIndex, text, startTime, endTime }]`  
 - `idempotency_key` (UUID, Unique) - Client-provided key for deduplication  
-- `status` (Enum) - 'pending' | 'completed' | 'failed'  
+- `status` (Enum) - 'pending' | 'processing' | 'completed' | 'failed'  
 - `created_at` (Timestamp) - Generation timestamp
 
 **Table 3: credit_transactions**  
@@ -142,9 +143,16 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 
 **Internal API: POST /api/audio/synthesize**  
 - **Request Payload:** `{ chapterId, text, language, voiceProfile, speed }`  
-- **Response Payload:** `{ success, audioUrl, durationSeconds, alignment: [{ sentenceIndex, text, startTime, endTime }] }`
-- **Idempotency:** Require `Idempotency-Key` header (client-generated UUID v4). Duplicate key returns existing record without re-processing.
-- **Speed:** Synthesis always runs at 1.0x. Playback speed is controlled client-side via `HTMLAudioElement.playbackRate`.
+- **Response Payload:** `{ success, audioUrl, durationSeconds, alignment: [{ sentenceIndex, text, startTime, endTime }] }`  
+- **Idempotency:** Require `Idempotency-Key` header (client-generated UUID v4). Duplicate key returns existing record without re-processing.  
+- **Speed:** Synthesis always runs at 1.0x. Playback speed is controlled client-side via `HTMLAudioElement.playbackRate`.  
+
+**Internal API: POST /api/audio/synthesize-async**  
+- **Request Payload:** `{ bookId, chapters: [{ chapterId, text, language, voiceProfile, speed }], idempotencyKey }`  
+- **Response:** 202 with `{ success, jobId, message }`. Each chapter is processed by a BullMQ worker with atomic credit tracking and book-level completion/failure aggregation. Requires `Idempotency-Key` header scoped to the book.  
+
+**Internal API: GET /api/storefront/embed/:generationId**  
+- Public endpoint (no auth). Returns `{ success, generationId, chapterId, audioUrl, durationSeconds, alignment }` with wildcard CORS. `audioUrl` is a fresh signed URL (1h TTL).
 
 **Internal API: GET /api/audio/:chapterId**  
 - **Response Payload:** `{ success, audioUrl, durationSeconds, alignment: [{ sentenceIndex, text, startTime, endTime }] }`  
@@ -162,7 +170,7 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 
 **Threat Models & Mitigations:**  
 1. **API Key Leakage:** Gnani.ai and Supabase Service Role keys MUST remain in `/server/.env`. The Vite frontend is prohibited from holding these keys.  
-2. **Wallet Draining (DDoS):** Prevent malicious users from spamming the TTS endpoint. Apply `express-rate-limit` (Max 5 requests/min per IP).  
+2. **Wallet Draining (DDoS):** Prevent malicious users from spamming the TTS endpoint. Apply `express-rate-limit` (Max 5 requests/min per IP for sync, 2/min for async).  
 3. **Credit Bypassing:** The credit deduction must be atomic in a single SQL statement:
    ```sql
    UPDATE users 
@@ -170,10 +178,12 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
    WHERE id = $uid AND credits >= $cost 
    RETURNING credits;
    ```
-   If row count = 0, reject with HTTP 402. No separate check-then-deduct.
-4. **CORS:** Express server must restrict `Access-Control-Allow-Origin` strictly to the deployed Vercel frontend URL.  
-5. **Auth:** Every `/api/audio/*` request requires `Authorization: Bearer <eKithab-JWT>`. Middleware verifies signature and attaches `req.user.id`.  
-6. **Idempotency:** `POST /api/audio/synthesize` requires `Idempotency-Key` header. Duplicate keys return existing `audio_generations` row (status check) without re-processing. The server inserts a `processing` placeholder row *before* running synthesis so a concurrent duplicate hits the unique constraint and polls.
+   If row count = 0, reject with HTTP 402. No separate check-then-deduct.  
+4. **CORS:** Express server must restrict `Access-Control-Allow-Origin` strictly to the deployed Vercel frontend URL. Storefront embed endpoint uses wildcard `*` (public, no auth).  
+5. **Auth:** Every `/api/audio/*` request requires `Authorization: Bearer <eKithab-JWT>`. Middleware verifies signature and attaches `req.user.id`. Storefront embed is exempt (public).  
+6. **Idempotency:** `POST /api/audio/synthesize` requires `Idempotency-Key` header. Duplicate keys return existing `audio_generations` row (status check) without re-processing. The server inserts a `processing` placeholder row *before* running synthesis so a concurrent duplicate hits the unique constraint and polls. Async path scopes keys to `book_id`.  
+7. **Anti-Ripping:** Storage bucket set to Private. Client never receives a public URL — only time-limited signed URLs (1h TTL) generated per-request via `getSignedAudioUrl()`.  
+8. **Corrupted Output Prevention:** `auditAudio()` hard-gate runs between synthesis and upload. Checks: buffer size < 500 bytes, missing WAV/ID3/MPEG magic bytes, duration-vs-text ratio anomaly. Failed audits refund credits and mark the generation `status='failed'`.
 
 **Error Boundaries:**  
 - Gnani 5xx errors must return HTTP 502 (Bad Gateway) to the client. Do not crash the Node process.  
@@ -231,10 +241,13 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 |------|-----------------|---------------|
 | **4.1 Lint & Typecheck** | `npm run lint && npm run typecheck` (both workspaces) | Zero errors |
 | **4.2 Unit Test: textProcessor** | `npm test -- textProcessor` | Strips markdown; all chunks < 400 chars |
-| **4.3 Integration Test: synthesize** | `POST /api/audio/synthesize` with 500-word payload | HTTP 200; valid Supabase URL; `alignment.length === sentenceCount`; `alignment[last].endTime === durationSeconds ± 0.1s` |
+| **4.3 Integration Test: synthesize** | `POST /api/audio/synthesize` with 500-word payload | HTTP 200; valid signed URL; `alignment.length === sentenceCount`; `alignment[last].endTime === durationSeconds ± 0.1s` |
 | **4.4 UI Test: highlight sync** | Playwright: click sentence N → `audio.currentTime` within ±100ms of `alignment[N].startTime` | All 10 random sentences pass |
 | **4.5 Idempotency Test** | Same `Idempotency-Key` POST twice to `/api/audio/synthesize` | Second response = first response (no double charge, no double audio) |
 | **4.6 Credit Atomicity Test** | Concurrent 5 requests from same user with 4 credits | Exactly 4 succeed, 1 returns 402; final balance = 0 |
+| **4.7 Signed URL Test** | GET `/api/storefront/embed/:id` | Returns 200 with `audioUrl` containing `X-Amz-Signature`, no auth required |
+| **4.8 Async Queue Test** | POST `/api/audio/synthesize-async` with 3 chapters | 202; all chapters `status='completed'` in DB |
+| **4.9 Audio Audit Test** | Mock `synthesizeText` to return <500 byte buffer | 502, credits refunded, row `status='failed'` |
 
 **Legacy Quick Checks (for local dev):**  
 1. Pass markdown with bold tags to `textProcessor.ts`. Assert output is clean and length < 400 chars.  
@@ -274,19 +287,25 @@ ekithab-audio-pipeline/
     │   ├── config/
     │   │   ├── supabase.js       # Supabase client setup + AUDIO_BUCKET
     │   ├── services/
-    │   │   ├── gnaniService.js   # Timbre v2.5 wrapper
-    │   │   ├── textProcessor.js  # Markdown cleaner & sentence splitter
-    │   │   ├── storageService.js # Supabase bucket upload handler
-    │   │   ├── audioStitcher.js  # Concatenate chunk buffers + cumulative timestamps
-    │   │   └── alignmentCalculator.js # Build immutable alignment[] from chunks
+    │   │   ├── audioAuditService.js     # Hard-gate audio quality audit
+    │   │   ├── audioStitcher.js         # Concatenate chunk buffers
+    │   │   ├── creditService.js         # Atomic credit ledger + RPCs
+    │   │   ├── gnaniService.js          # Timbre v2.5 wrapper
+    │   │   ├── storageService.js        # Signed URL upload/download
+    │   │   └── textProcessor.js         # Markdown cleaner & sentence splitter
     │   ├── middleware/
     │   │   ├── auth.js           # Verify eKithab JWT
     │   │   └── creditGuard.js    # Atomic credit deduction
+    │   ├── queues/
+    │   │   └── synthesisQueue.js # BullMQ queue + worker + in-memory fallback
     │   ├── routes/
-    │   │   └── audioRoutes.js    # Express route handlers
+    │   │   ├── audioRoutes.js    # Express route handlers (sync + async)
+    │   │   └── storefrontRoutes.js  # Public embed endpoint
     │   └── index.js
     ├── migrations/
-    │   └── 001_align_audio_generations.sql  # Idempotent schema alignment
+    │   ├── 001_align_audio_generations.sql
+    │   ├── 002_ledger_deduct_refund.sql
+    │   └── 003_add_audio_path.sql
     └── package.json
 ```
 
@@ -402,4 +421,4 @@ Response:
 ---
 
 **License:** Proprietary - eKithab Project  
-**Last Updated:** 2026-10-10
+**Last Updated:** 2026-10-11
