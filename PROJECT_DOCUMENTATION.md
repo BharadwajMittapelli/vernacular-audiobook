@@ -313,7 +313,7 @@ npm run install:all
 GNANI_API_KEY_ID=your_gnani_key
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-PORT=3001
+PORT=4001
 FRONTEND_URL=https://your-vercel-app.vercel.app
 ```
 
@@ -329,8 +329,8 @@ VITE_API_URL=https://your-render-app.onrender.com
 npm run dev
 
 # Or start individually
-npm run dev:server  # Server on http://localhost:3001
-npm run dev:client  # Client on http://localhost:5173
+npm run dev:server  # Server on http://localhost:4001
+npm run dev:client  # Client on http://localhost:5175
 ```
 
 ### Build
