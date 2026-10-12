@@ -1,25 +1,30 @@
 import React, { useState } from 'react';
 import { UploadCloud } from 'lucide-react';
 import { splitChapters } from '../../services/chapterSplitter.js';
+import { uploadDocument } from '../../services/api.js';
 
 const MAX_MB = 20;
 
 export function BookUploader({ onDocumentLoaded }) {
   const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState(null); // { kind: 'error' | 'notice', text }
 
   const handleFile = (file) => {
-    if (!file) return;
+    if (!file || uploading) return;
     setMsg(null);
     if (file.size > MAX_MB * 1024 * 1024) {
       return setMsg({ kind: 'error', text: `File exceeds the ${MAX_MB} MB limit` });
     }
     const ext = file.name.split('.').pop().toLowerCase();
     if (ext === 'pdf' || ext === 'epub') {
-      return setMsg({
-        kind: 'notice',
-        text: 'PDF & EPUB support requires server-side processing (Backend endpoint pending).',
-      });
+      setUploading(true);
+      return uploadDocument(file)
+        .then((res) => onDocumentLoaded(res))
+        .catch((err) =>
+          setMsg({ kind: 'error', text: err.response?.data?.error || 'Upload failed' })
+        )
+        .finally(() => setUploading(false));
     }
     if (ext !== 'txt' && ext !== 'md') {
       return setMsg({ kind: 'error', text: 'Unsupported file type — use .txt or .md' });
@@ -54,9 +59,9 @@ export function BookUploader({ onDocumentLoaded }) {
         }`}
       >
         <UploadCloud className="h-10 w-10 text-muted-foreground" />
-        <span className="font-medium">Drop a book here, or click to browse</span>
+        <span className="font-medium">{uploading ? 'Parsing on the server…' : 'Drop a book here, or click to browse'}</span>
         <span className="text-sm text-muted-foreground">
-          .txt and .md parse in-browser · .pdf and .epub coming via server
+          .txt and .md parse in-browser · .pdf and .epub parse on the server
         </span>
         <input
           type="file"

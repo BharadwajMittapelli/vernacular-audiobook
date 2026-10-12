@@ -8,6 +8,7 @@ import { authMiddleware } from './middleware/auth.js';
 import audioRouter from './routes/audioRoutes.js';
 import storefrontRouter from './routes/storefrontRoutes.js';
 import voiceRouter from './routes/voiceRoutes.js';
+import documentRouter from './routes/documentRoutes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -79,6 +80,9 @@ app.use('/api/storefront', storefrontRouter);
 
 // Public voice catalog. No auth; CORS stays frontend-restricted (not wildcard).
 app.use('/api/voices', voiceRouter);
+
+// Document upload (PDF/EPUB server-side parsing). Stateless parse-and-return.
+app.use('/api/documents', documentRouter);
 
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);

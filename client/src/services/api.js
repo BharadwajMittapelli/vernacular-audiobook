@@ -34,6 +34,12 @@ export function getChapterAudio(chapterId) {
   return api.get(`/api/audio/${chapterId}`).then((res) => res.data);
 }
 
+export function uploadDocument(file) {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/documents/upload', form).then((res) => res.data);
+}
+
 export function getEmbedData(generationId) {
   return api.get(`/api/storefront/embed/${generationId}`).then((res) => res.data);
 }
