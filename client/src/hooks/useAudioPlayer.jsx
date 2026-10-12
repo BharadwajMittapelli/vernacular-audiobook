@@ -1,82 +1,75 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-export function useAudioPlayer(audioUrl, alignment) {
+export function useAudioPlayer(audioUrl, alignment = []) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1);
+  const [playbackRate, setPlaybackRateState] = useState(1);
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(-1);
-  
+
   const audioRef = useRef(null);
 
   useEffect(() => {
-    if (audioUrl) {
-      audioRef.current = new Audio(audioUrl);
-      audioRef.current.addEventListener('loadedmetadata', () => {
-        setDuration(audioRef.current.duration);
-      });
-      audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
-      audioRef.current.addEventListener('ended', handleEnded);
-      
-      return () => {
-        audioRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
-        audioRef.current?.removeEventListener('ended', handleEnded);
-        audioRef.current?.pause();
-        audioRef.current = null;
-      };
-    }
-  }, [audioUrl]);
-
-  const handleTimeUpdate = useCallback(() => {
-    if (audioRef.current) {
-      const time = audioRef.current.currentTime;
-      setCurrentTime(time);
-      
-      const sentenceIndex = alignment.findIndex(
-        a => time >= a.startTime && time <= a.endTime
-      );
-      if (sentenceIndex !== -1 && sentenceIndex !== currentSentenceIndex) {
-        setCurrentSentenceIndex(sentenceIndex);
-      }
-    }
-  }, [alignment, currentSentenceIndex]);
-
-  const handleEnded = useCallback(() => {
-    setIsPlaying(false);
+    if (!audioUrl) return;
     setCurrentTime(0);
     setCurrentSentenceIndex(-1);
-  }, []);
 
-  const play = useCallback(() => {
-    audioRef.current?.play();
-    setIsPlaying(true);
-  }, []);
+    const audio = new Audio(audioUrl);
+    audioRef.current = audio;
+    audio.playbackRate = playbackRate;
 
-  const pause = useCallback(() => {
-    audioRef.current?.pause();
-    setIsPlaying(false);
-  }, []);
+    const last = alignment[alignment.length - 1];
 
-  const seek = useCallback((time) => {
+    const onTimeUpdate = () => {
+      // guardrails: terminal seek — clamp to last sentence end and pause
+      if (last && audio.currentTime >= last.endTime) {
+        audio.currentTime = last.endTime;
+        audio.pause();
+      }
+      setCurrentTime(audio.currentTime);
+      setCurrentSentenceIndex(alignment.findIndex((a) => audio.currentTime < a.endTime));
+    };
+
+    const onLoadedMetadata = () => setDuration(audio.duration);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onEnded = () => setIsPlaying(false);
+
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('ended', onEnded);
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('ended', onEnded);
+      audioRef.current = null;
+    };
+    // ponytail: listeners bind to the current alignment/audioUrl snapshot;
+    // upgrade to refs if alignment ever updates mid-playback
+  }, [audioUrl]);
+
+  const play = useCallback(() => audioRef.current?.play(), []);
+  const pause = useCallback(() => audioRef.current?.pause(), []);
+  const seek = useCallback((seconds) => {
     if (audioRef.current) {
-      audioRef.current.currentTime = time;
-      setCurrentTime(time);
+      audioRef.current.currentTime = seconds;
+      setCurrentTime(seconds);
     }
   }, []);
-
-  const changeRate = useCallback((rate) => {
-    if (audioRef.current) {
-      audioRef.current.playbackRate = rate;
-      setPlaybackRate(rate);
-    }
+  const setPlaybackRate = useCallback((rate) => {
+    if (audioRef.current) audioRef.current.playbackRate = rate;
+    setPlaybackRateState(rate);
   }, []);
-
-  const seekToSentence = useCallback((sentenceIndex) => {
-    const entry = alignment[sentenceIndex];
-    if (entry) {
-      seek(entry.startTime);
-    }
-  }, [alignment, seek]);
+  const seekToSentence = useCallback(
+    (index) => alignment[index] && seek(alignment[index].startTime),
+    [alignment, seek]
+  );
 
   return {
     currentTime,
@@ -87,7 +80,7 @@ export function useAudioPlayer(audioUrl, alignment) {
     play,
     pause,
     seek,
-    changeRate,
+    setPlaybackRate,
     seekToSentence,
   };
 }

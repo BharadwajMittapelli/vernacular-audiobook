@@ -1,9 +1,47 @@
-export const synthesizeAudio = async (text, language) => {
-  const response = await fetch('http://localhost:3001/api/audio/synthesize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, language }),
-  });
-  if (!response.ok) throw new Error('Failed to synthesize audio');
-  return await response.json();
-};
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4001',
+});
+
+export function getVoices(language) {
+  return api
+    .get('/api/voices', language ? { params: { language } } : undefined)
+    .then((res) => res.data.voices);
+}
+
+export function synthesizeAudio(payload) {
+  return api
+    .post('/api/audio/synthesize', payload, {
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
+    })
+    .then((res) => res.data);
+}
+
+export function synthesizeAsync({ chapters, ...rest }) {
+  return api
+    .post('/api/audio/synthesize-async', {
+      chapters: chapters.map((ch) => ({
+        idempotencyKey: crypto.randomUUID(),
+        ...ch,
+      })),
+      ...rest,
+    })
+    .then((res) => res.data);
+}
+
+export function getChapterAudio(chapterId) {
+  return api.get(`/api/audio/${chapterId}`).then((res) => res.data);
+}
+
+export function uploadDocument(file) {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/api/documents/upload', form).then((res) => res.data);
+}
+
+export function getEmbedData(generationId) {
+  return api.get(`/api/storefront/embed/${generationId}`).then((res) => res.data);
+}
+
+export default api;

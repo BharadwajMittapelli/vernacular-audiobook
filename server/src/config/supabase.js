@@ -20,4 +20,4 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   },
 });
 
-export const AUDIO_BUCKET = 'audiobooks';
+export const AUDIO_BUCKET = process.env.SUPABASE_BUCKET_NAME || 'audiobook';
