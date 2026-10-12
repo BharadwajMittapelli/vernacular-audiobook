@@ -9,12 +9,10 @@ export function ReadAlongPlayer({ audioUrl, alignment, chapterText }) {
     duration,
     isPlaying,
     playbackRate,
-    currentSentenceIndex,
     play,
     pause,
     seek,
-    changeRate,
-    seekToSentence,
+    setPlaybackRate,
   } = useAudioPlayer(audioUrl, alignment);
 
   if (!audioUrl) {
@@ -30,8 +28,8 @@ export function ReadAlongPlayer({ audioUrl, alignment, chapterText }) {
       <div className="flex-1 overflow-y-auto p-4 pr-12">
         <TranscriptHighlighter
           alignment={alignment}
-          currentSentenceIndex={currentSentenceIndex}
-          onSentenceClick={seekToSentence}
+          currentTime={currentTime}
+          onSeek={seek}
         />
       </div>
       <PlaybackControls
@@ -43,7 +41,7 @@ export function ReadAlongPlayer({ audioUrl, alignment, chapterText }) {
         onPause={pause}
         onSeek={seek}
         onRewind={() => seek(Math.max(0, currentTime - 15))}
-        onRateChange={changeRate}
+        onRateChange={setPlaybackRate}
       />
     </div>
   );

@@ -1,19 +1,41 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4001';
+import axios from 'axios';
 
-export async function synthesizeAudio({ chapterId, text, language, voiceProfile, speed }) {
-  const idempotencyKey = crypto.randomUUID();
-  const response = await fetch(`${API_BASE}/api/audio/synthesize`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
-    },
-    body: JSON.stringify({ chapterId, text, language, voiceProfile, speed }),
-  });
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4001',
+});
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || `Synthesis failed (${response.status})`);
-  }
-  return data;
+export function getVoices(language) {
+  return api
+    .get('/api/voices', language ? { params: { language } } : undefined)
+    .then((res) => res.data.voices);
 }
+
+export function synthesizeAudio(payload) {
+  return api
+    .post('/api/audio/synthesize', payload, {
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
+    })
+    .then((res) => res.data);
+}
+
+export function synthesizeAsync({ chapters, ...rest }) {
+  return api
+    .post('/api/audio/synthesize-async', {
+      chapters: chapters.map((ch) => ({
+        idempotencyKey: crypto.randomUUID(),
+        ...ch,
+      })),
+      ...rest,
+    })
+    .then((res) => res.data);
+}
+
+export function getChapterAudio(chapterId) {
+  return api.get(`/api/audio/${chapterId}`).then((res) => res.data);
+}
+
+export function getEmbedData(generationId) {
+  return api.get(`/api/storefront/embed/${generationId}`).then((res) => res.data);
+}
+
+export default api;
