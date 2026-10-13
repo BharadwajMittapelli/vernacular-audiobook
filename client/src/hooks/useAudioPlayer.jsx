@@ -8,6 +8,11 @@ export function useAudioPlayer(audioUrl, alignment = []) {
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(-1);
 
   const audioRef = useRef(null);
+  const alignmentRef = useRef(alignment);
+
+  useEffect(() => {
+    alignmentRef.current = alignment;
+  }, [alignment]);
 
   useEffect(() => {
     if (!audioUrl) return;
@@ -21,13 +26,15 @@ export function useAudioPlayer(audioUrl, alignment = []) {
     const last = alignment[alignment.length - 1];
 
     const onTimeUpdate = () => {
-      // guardrails: terminal seek — clamp to last sentence end and pause
-      if (last && audio.currentTime >= last.endTime) {
-        audio.currentTime = last.endTime;
+      const currentAlignment = alignmentRef.current;
+      const currentLast = currentAlignment[currentAlignment.length - 1];
+
+      if (currentLast && audio.currentTime >= currentLast.endTime) {
+        audio.currentTime = currentLast.endTime;
         audio.pause();
       }
       setCurrentTime(audio.currentTime);
-      setCurrentSentenceIndex(alignment.findIndex((a) => audio.currentTime < a.endTime));
+      setCurrentSentenceIndex(currentAlignment.findIndex((a) => audio.currentTime < a.endTime));
     };
 
     const onLoadedMetadata = () => setDuration(audio.duration);
@@ -50,8 +57,6 @@ export function useAudioPlayer(audioUrl, alignment = []) {
       audio.removeEventListener('ended', onEnded);
       audioRef.current = null;
     };
-    // ponytail: listeners bind to the current alignment/audioUrl snapshot;
-    // upgrade to refs if alignment ever updates mid-playback
   }, [audioUrl]);
 
   const play = useCallback(() => audioRef.current?.play(), []);

@@ -17,20 +17,26 @@ export function AudioConfigModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-background rounded-lg border shadow-lg p-6 animate-in fade-in zoom-in-95">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Audio configuration"
+    >
+      <div className="w-full max-w-md bg-card border rounded-xl shadow-xl p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold">Audio Configuration</h2>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <h2 className="text-lg font-semibold">Audio Configuration</h2>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close dialog">
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div>
             <label className="block text-sm font-medium mb-2">Voice</label>
             <VoiceSelector
               language={selectedLanguage}
+              selectedVoice={selectedVoice}
               onSelect={({ voiceProfile, languageCode }) =>
                 onGenerate({ voiceProfile, language: languageCode })
               }
@@ -39,9 +45,10 @@ export function AudioConfigModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Speed: {speed.toFixed(1)}x
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium">Speed</label>
+              <span className="text-sm text-muted-foreground">{speed.toFixed(1)}x</span>
+            </div>
             <Slider
               value={[speed]}
               onValueChange={([v]) => onGenerate({ speed: v })}
@@ -51,7 +58,7 @@ export function AudioConfigModal({
             />
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-muted rounded-md">
+          <div className="flex items-center justify-between px-4 py-3 bg-muted rounded-lg">
             <span className="text-sm font-medium">Estimated Credits</span>
             <span className="text-lg font-bold text-primary">{estimatedCredits}</span>
           </div>
@@ -69,7 +76,12 @@ export function AudioConfigModal({
             }
             disabled={isGenerating || !selectedVoice}
           >
-            {isGenerating ? 'Generating...' : 'Generate Audio'}
+            {isGenerating ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                Generating…
+              </span>
+            ) : 'Generate Audio'}
           </Button>
         </div>
       </div>

@@ -15,6 +15,7 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          hover: "hsl(var(--primary-hover))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -40,6 +41,12 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        sidebar: "hsl(var(--sidebar))",
+        settings: "hsl(var(--settings))",
+        elevated: "hsl(var(--elevated))",
+        success: "hsl(var(--success))",
+        warning: "hsl(var(--warning))",
+        active: "hsl(var(--active-bg))",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -55,10 +62,20 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "slide-in-right": {
+          from: { transform: "translateX(100%)" },
+          to: { transform: "translateX(0)" },
+        },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "slide-in-right": "slide-in-right 0.2s ease-out",
+        "fade-in": "fade-in 0.15s ease-out",
       },
     },
   },
