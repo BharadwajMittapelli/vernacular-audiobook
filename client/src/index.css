@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 @layer base {
   :root {
@@ -24,6 +23,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 38 15% 89%;              /* #E5E1DA */
     --input: 38 15% 89%;
+    --border: 38 15% 89%;
     --ring: 250 76% 69%;
     --success: 159 66% 39%;            /* #269B65 */
     --warning: 33 67% 41%;             /* #B7791F */
@@ -36,10 +36,11 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }

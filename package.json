@@ -17,6 +17,7 @@
     "install:all": "npm install"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
     "concurrently": "^8.2.2"
   },
   "engines": {
