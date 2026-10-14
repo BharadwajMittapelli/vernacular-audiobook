@@ -35,3 +35,6 @@ coverage/
 
 # Misc
 *.tsbuildinfo
+
+# Kilo local config (may contain secrets)
+.kilo/kilo.jsonc
