@@ -1,9 +1,27 @@
-/**
- * Auth middleware stub.
- * TODO: implement JWT verification once EKITHAB_JWT_SECRET is available.
- * For now, use a hardcoded mock user ID.
- */
-export function authMiddleware(req, res, next) {
-  req.user = { id: '00000000-0000-0000-0000-000000000001' };
-  next();
+import { supabase } from '../config/supabase.js';
+
+export async function authMiddleware(req, res, next) {
+  const header = req.headers.authorization;
+
+  if (!header) {
+    if (process.env.NODE_ENV === 'development') {
+      req.user = { id: '00000000-0000-0000-0000-000000000001' };
+      return next();
+    }
+    return res.status(401).json({ success: false, error: 'Missing Authorization header' });
+  }
+
+  const token = header.startsWith('Bearer ') ? header.slice(7) : header;
+
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+    }
+    req.user = { id: user.id, email: user.email };
+    next();
+  } catch (err) {
+    console.error('authMiddleware error:', err.message);
+    return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+  }
 }
