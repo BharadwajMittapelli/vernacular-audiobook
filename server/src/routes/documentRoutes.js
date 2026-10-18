@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
 import { PDFParse } from 'pdf-parse';
+import mammoth from 'mammoth';
 import { splitTextIntoChapters } from '../utils/chapterSplitter.js';
 
 const upload = multer({
@@ -26,6 +27,11 @@ async function pdfText(buffer) {
   } finally {
     await parser.destroy();
   }
+}
+
+async function docxText(buffer) {
+  const raw = await mammoth.extractRawText({ buffer });
+  return raw.value;
 }
 
 const decodeEntities = (s) =>
@@ -68,11 +74,12 @@ router.post('/upload', uploadSingle, async (req, res) => {
       return res.status(400).json({ success: false, error: 'No file uploaded (multipart field: file)' });
     }
     const ext = (req.file.originalname.split('.').pop() || '').toLowerCase();
-    if (ext !== 'pdf' && ext !== 'epub') {
-      return res.status(400).json({ success: false, error: 'Only .pdf and .epub are supported on this endpoint' });
+    const isDocx = ext === 'docx' || req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (ext !== 'pdf' && ext !== 'epub' && !isDocx) {
+      return res.status(400).json({ success: false, error: 'Only .pdf, .epub, and .docx are supported on this endpoint' });
     }
 
-    const raw = ext === 'pdf' ? await pdfText(req.file.buffer) : epubText(req.file.buffer);
+    const raw = ext === 'pdf' ? await pdfText(req.file.buffer) : isDocx ? await docxText(req.file.buffer) : epubText(req.file.buffer);
     const chapters = splitTextIntoChapters(raw.replace(/\uFEFF/, ''));
     if (!chapters.length) {
       return res.status(422).json({ success: false, error: 'No readable text found in document' });

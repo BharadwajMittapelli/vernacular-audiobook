@@ -453,4 +453,24 @@ router.post('/synthesize-async', async (req, res) => {
   }
 });
 
+// GET /api/audio/credits — fetch authenticated user's current credit balance
+router.get('/credits', async (req, res) => {
+  try {
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('credits')
+      .eq('id', req.user.id)
+      .single();
+
+    if (error || !user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    res.json({ success: true, balance: user.credits });
+  } catch (error) {
+    console.error('GET /api/audio/credits error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 export default router;
