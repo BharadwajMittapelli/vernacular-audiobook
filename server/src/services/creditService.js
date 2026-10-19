@@ -11,7 +11,18 @@ export function calculateCost(characterCount) {
   return Math.ceil(characterCount / 100);
 }
 
+// DEV OVERRIDE FOR TESTING — remove with DEV_BYPASS_CREDITS. Single predicate
+// for every credit-enforcement gate; inert unless the flag is 'true' outside
+// production, so a stray env var on a prod deploy can never disable billing.
+export function isCreditBypassed() {
+  return process.env.DEV_BYPASS_CREDITS === 'true' && process.env.NODE_ENV !== 'production';
+}
+
 export async function deductCredits(userId, characterCount, referenceId) {
+  if (isCreditBypassed()) {
+    return 99999;
+  }
+
   const cost = calculateCost(characterCount);
   const { data, error } = await supabase.rpc('deduct_credits', {
     p_user_id: userId,

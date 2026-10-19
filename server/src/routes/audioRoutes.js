@@ -11,6 +11,7 @@ import {
   refundCredits,
   InsufficientCreditsError,
   calculateCost,
+  isCreditBypassed,
 } from '../services/creditService.js';
 import { queue } from '../queues/synthesisQueue.js';
 
@@ -331,23 +332,25 @@ router.post('/synthesize-async', async (req, res) => {
     }
 
     // Upfront credit pre-check (prevents partial-book wallet drain)
-    let totalCost = 0;
-    for (const ch of chapters) {
-      totalCost += calculateCost(stripMarkdown(ch.text).length);
-    }
-    const { data: balanceData, error: balanceError } = await supabase.rpc('get_user_balance', { p_user_id: userId });
-    if (balanceError) {
-      console.error('Balance pre-check failed:', balanceError);
-      return res.status(500).json({ success: false, error: 'Credit balance check failed' });
-    }
-    const availableBalance = balanceData ?? 0;
-    if (availableBalance < totalCost) {
-      return res.status(402).json({
-        success: false,
-        error: 'Insufficient credits',
-        required: totalCost,
-        available: availableBalance,
-      });
+    if (!isCreditBypassed()) {
+      let totalCost = 0;
+      for (const ch of chapters) {
+        totalCost += calculateCost(stripMarkdown(ch.text).length);
+      }
+      const { data: balanceData, error: balanceError } = await supabase.rpc('get_user_balance', { p_user_id: userId });
+      if (balanceError) {
+        console.error('Balance pre-check failed:', balanceError);
+        return res.status(500).json({ success: false, error: 'Credit balance check failed' });
+      }
+      const availableBalance = balanceData ?? 0;
+      if (availableBalance < totalCost) {
+        return res.status(402).json({
+          success: false,
+          error: 'Insufficient credits',
+          required: totalCost,
+          available: availableBalance,
+        });
+      }
     }
 
     const bookId = incomingBookId || uuidv4();

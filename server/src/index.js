@@ -10,9 +10,14 @@ import storefrontRouter from './routes/storefrontRoutes.js';
 import voiceRouter from './routes/voiceRoutes.js';
 import documentRouter from './routes/documentRoutes.js';
 import studioRoutes from './routes/studioRoutes.js';
+import { isCreditBypassed } from './services/creditService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+if (isCreditBypassed()) {
+  console.warn('[DEV_BYPASS_CREDITS ACTIVE] Credit enforcement is disabled for local testing. Never set this flag in production.');
+}
 
 const app = express();
 const PORT = process.env.PORT || 4001;

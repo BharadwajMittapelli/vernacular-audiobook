@@ -5,7 +5,7 @@ import { synthesizeText } from '../services/ttsProvider.js';
 import { uploadAudio, resolveAudioUrl } from '../services/storageService.js';
 import { auditAudio } from '../services/audioAuditService.js';
 import { supabase } from '../config/supabase.js';
-import { deductCredits, InsufficientCreditsError, calculateCost, refundCredits } from '../services/creditService.js';
+import { deductCredits, InsufficientCreditsError, calculateCost, refundCredits, isCreditBypassed } from '../services/creditService.js';
 
 const router = express.Router();
 
@@ -144,16 +144,18 @@ router.post('/:bookId/synthesize-all', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No chapters need processing' });
     }
 
-    const totalCost = pendingChapters.reduce((sum, ch) => sum + calculateCost(ch.char_count), 0);
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('credits')
-      .eq('id', req.user.id)
-      .single();
+    if (!isCreditBypassed()) {
+      const totalCost = pendingChapters.reduce((sum, ch) => sum + calculateCost(ch.char_count), 0);
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('credits')
+        .eq('id', req.user.id)
+        .single();
 
-    if (userError || !userData) throw userError;
-    if (userData.credits < totalCost) {
-      return res.status(402).json({ success: false, error: 'Insufficient credits. Please top up your wallet.' });
+      if (userError || !userData) throw userError;
+      if (userData.credits < totalCost) {
+        return res.status(402).json({ success: false, error: 'Insufficient credits. Please top up your wallet.' });
+      }
     }
 
     await supabase
