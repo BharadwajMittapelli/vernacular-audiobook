@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Play } from 'lucide-react';
 import { getVoices } from '../../services/api.js';
 
 const LABELS = {
@@ -45,8 +46,8 @@ export function VoiceSelector({ language, onSelect, onLanguageChange, selectedVo
             className={`
               px-3 py-1 rounded-full text-xs font-medium transition-colors
               ${filterLang === code
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-elevated text-muted-foreground hover:text-foreground hover:bg-secondary'
+                ? 'bg-terracotta/15 border-terracotta text-terracotta'
+                : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted'
               }
             `}
           >
@@ -54,25 +55,41 @@ export function VoiceSelector({ language, onSelect, onLanguageChange, selectedVo
           </button>
         ))}
       </div>
-      <div className="grid grid-cols-2 gap-2" role="listbox" aria-label="Voices">
-        {shown.map((v) => (
-          <button
-            key={v.id}
-            role="option"
-            aria-selected={selectedVoice === v.id}
-            onClick={() => onSelect?.({ voiceProfile: v.id, languageCode: v.languageCode })}
-            className={`
-              text-left p-3 rounded-lg border transition-colors
-              hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-              ${selectedVoice === v.id ? 'border-primary bg-primary/10' : 'border-border bg-card'}
-            `}
-          >
-            <div className="text-sm font-medium truncate">{v.name}</div>
-            <div className="text-xs text-muted-foreground mt-0.5 capitalize">
-              {v.gender} · {v.accent}
-            </div>
-          </button>
-        ))}
+      <div className="grid grid-cols-1 gap-2" role="listbox" aria-label="Voices">
+        {shown.map((v) => {
+          const isSelected = selectedVoice === v.id;
+          const initials = (v.name || '').split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
+          return (
+            <button
+              key={v.id}
+              role="option"
+              aria-selected={isSelected}
+              onClick={() => onSelect?.({ voiceProfile: v.id, languageCode: v.languageCode })}
+              className={`
+                text-left p-3 rounded-lg border transition-colors flex items-start gap-2.5
+                hover:border-terracotta/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta/40
+                ${isSelected ? 'border-terracotta bg-terracotta/5' : 'border-border bg-card'}
+              `}
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
+                isSelected ? 'bg-terracotta text-terracotta-foreground' : 'bg-muted text-muted-foreground'
+              }`}>
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium">{v.name}</div>
+                <div className="text-xs text-muted-foreground mt-0.5 capitalize">
+                  {v.gender} · {v.accent}
+                </div>
+              </div>
+              <div className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
+                isSelected ? 'bg-terracotta/15 text-terracotta' : 'bg-muted text-muted-foreground'
+              }`}>
+                <Play className="h-3 w-3" />
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -11,7 +11,7 @@ export function TranscriptHighlighter({ alignment, currentTime = 0, currentSente
   }
 
   return (
-    <div className="space-y-1" role="log" aria-label="Transcript" aria-live="polite">
+    <div className="max-w-prose mx-auto space-y-1 font-serif text-base leading-relaxed" role="log" aria-label="Transcript" aria-live="polite">
       {alignment.map((entry, index) => {
         const isActive = index === currentSentenceIndex;
         return (
@@ -31,11 +31,10 @@ export function TranscriptHighlighter({ alignment, currentTime = 0, currentSente
             className={`
               px-3 py-1.5 rounded-md cursor-pointer transition-colors
               ${isActive
-                ? 'bg-active text-primary font-medium border-l-2 border-primary pl-3'
-                : 'text-foreground hover:bg-muted hover:text-foreground'
+                ? 'bg-terracotta/10 text-foreground font-medium'
+                : 'text-foreground hover:bg-muted'
               }
             `}
-            style={{ fontSize: '16px', lineHeight: '1.7' }}
           >
             {entry.text}
           </p>

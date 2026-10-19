@@ -47,6 +47,10 @@ export default {
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
         active: "hsl(var(--active-bg))",
+        terracotta: {
+          DEFAULT: "hsl(var(--terracotta))",
+          foreground: "hsl(var(--terracotta-foreground))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

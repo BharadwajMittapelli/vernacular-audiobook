@@ -11,6 +11,121 @@ import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.js
 import { synthesizeAudio, synthesizeAsync, getChapterAudio } from '../services/api.js';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
 import { Button } from '../components/ui/button.jsx';
+import { Zap, FileText, BookOpen, Info } from 'lucide-react';
+
+const LABELS = {
+  'en-IN': 'English',
+  'hi-IN': 'Hindi',
+  'te-IN': 'Telugu',
+  'ta-IN': 'Tamil',
+  'kn-IN': 'Kannada',
+  'ml-IN': 'Malayalam',
+  'mr-IN': 'Marathi',
+  'bn-IN': 'Bengali',
+  'gu-IN': 'Gujarati',
+  'pa-IN': 'Punjabi',
+};
+
+function estimateWordCount(text) {
+  if (!text) return 0;
+  return text.replace(/[#*`_\[\]]/g, '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function estimateCharCount(text) {
+  if (!text) return 0;
+  return text.replace(/[#*`_\[\]]/g, '').trim().length;
+}
+
+function estimateReadingMinutes(text) {
+  if (!text) return 0;
+  return Math.ceil(estimateWordCount(text) / 160);
+}
+
+function estimateCredits(text) {
+  return Math.ceil((text || '').replace(/[#*`_\[\]]/g, '').trim().length / 100);
+}
+
+function ErrorBanner({ children }) {
+  return (
+    <div className="mb-4 rounded-lg p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({ label, sublabel }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+      <p className="text-center text-sm">{label}</p>
+      {sublabel && <p className="text-center text-xs mt-1 text-muted-foreground/60">{sublabel}</p>}
+    </div>
+  );
+}
+
+function ChapterInfoView({ chapter, estimatedCredits, readingMinutes, wordCount, charCount, hasAudio, audioDuration }) {
+  const formatDuration = (s) => {
+    if (!s || !isFinite(s)) return '—';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}m ${sec.toString().padStart(2, '0')}s`;
+  };
+
+  if (!chapter) return <EmptyState label="No chapter selected" />;
+
+  return (
+    <div className="max-w-xl">
+      <h2 className="text-2xl font-serif font-semibold text-foreground mb-6">
+        {chapter.title}
+      </h2>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Chapter ID</p>
+            <p className="text-sm text-foreground font-mono">{chapter.chapterId}</p>
+          </div>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Word Count</p>
+            <p className="text-sm text-foreground font-medium">{wordCount}</p>
+          </div>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Character Count</p>
+            <p className="text-sm text-foreground font-medium">{charCount}</p>
+          </div>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Est. Reading Time</p>
+            <p className="text-sm text-foreground font-medium">{readingMinutes} min</p>
+          </div>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Estimated Credits</p>
+            <p className="text-sm text-terracotta font-bold">{estimatedCredits}</p>
+          </div>
+          <div className="bg-card border border-border rounded-lg p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Audio Status</p>
+            <p className="text-sm text-foreground">
+              {hasAudio ? (
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-success shrink-0" />
+                  Generated ({formatDuration(audioDuration)})
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-muted shrink-0" />
+                  Not generated
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+        <div className="bg-card border border-border rounded-lg p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Chapter Text</p>
+          <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto scrollbar-thin">
+            {chapter.text}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Dashboard() {
   const { signOut } = useAuth();
@@ -25,13 +140,17 @@ function Dashboard() {
   const [bulkStatus, setBulkStatus] = React.useState(null);
   const [audioResult, setAudioResult] = React.useState(null);
   const [error, setError] = React.useState(null);
+  const [activeTab, setActiveTab] = React.useState('transcript');
 
   const chapter = book ? book.chapters[activeIdx] : null;
   const alignment = audioResult?.alignment || [];
   const audioUrl = audioResult?.audioUrl || null;
   const player = useAudioPlayer(audioUrl, alignment);
 
-  const estimateCredits = (text) => Math.ceil(text.replace(/[#*`_\[\]]/g, '').trim().length / 100);
+  React.useEffect(() => {
+    setSpeed(player.playbackRate);
+  }, [player.playbackRate]);
+
   const estimatedCredits = chapter ? estimateCredits(chapter.text) : 0;
   const totalCredits = book
     ? book.chapters.reduce((sum, ch) => sum + estimateCredits(ch.text), 0)
@@ -163,6 +282,220 @@ function Dashboard() {
     />
   );
 
+  const studioContent = (
+    <div className="h-full flex flex-col bg-background">
+      {/* Book header */}
+      <div className="shrink-0 px-8 py-2 flex items-center gap-4 border-b border-border">
+        <div className="w-12 h-16 shrink-0 rounded-md bg-terracotta/20 flex items-center justify-center text-terracotta text-sm font-bold">
+          {book?.title?.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-muted-foreground mb-0.5 font-medium">{book?.title}</p>
+          <h1 className="text-3xl font-serif font-semibold text-foreground leading-tight">
+            {chapter?.title}
+          </h1>
+          <span className="text-xs text-muted-foreground mt-0.5 shrink-0">
+            Ch. {activeIdx + 1} / {book?.chapters?.length ?? 0}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => selectChapter(Math.max(0, activeIdx - 1))}
+            disabled={activeIdx === 0}
+            className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            aria-label="Previous chapter"
+          >
+            &larr;
+          </button>
+          <button
+            onClick={() => selectChapter(Math.min((book?.chapters?.length ?? 1) - 1, activeIdx + 1))}
+            disabled={activeIdx === 0 || activeIdx === (book?.chapters?.length ?? 1) - 1}
+            className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            aria-label="Next chapter"
+          >
+            &rarr;
+          </button>
+        </div>
+      </div>
+
+      <div className="shrink-0 px-8 pt-1 flex items-center gap-6">
+        {[
+          { key: 'transcript', label: 'Transcript', icon: FileText },
+          { key: 'read-along', label: 'Read Along', icon: BookOpen },
+          { key: 'chapter-info', label: 'Chapter Info', icon: Info },
+        ].map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`pb-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === key
+                ? 'border-terracotta text-terracotta'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Main content + right panel */}
+      <div className="flex-1 overflow-hidden flex">
+        {/* Central workspace — scrolls independently */}
+        <div className="flex-1 overflow-y-auto px-8 py-3 scrollbar-thin">
+          {error && <ErrorBanner>{error}</ErrorBanner>}
+          {bulkStatus && (
+            <div className="mb-4 rounded-lg p-3 bg-terracotta/10 border border-terracotta/20 text-terracotta text-sm">
+              {bulkStatus}
+            </div>
+          )}
+
+          {activeTab === 'transcript' && (
+            <div>
+              <ReadAlongPlayer
+                audioUrl={audioUrl}
+                alignment={alignment}
+                chapterText={chapter?.text}
+                currentTime={player.currentTime}
+                currentSentenceIndex={player.currentSentenceIndex}
+                onSeek={(s) => player.seek(s)}
+              />
+            </div>
+          )}
+
+          {activeTab === 'read-along' && (
+            <div>
+              <ReadAlongPlayer
+                audioUrl={audioUrl}
+                alignment={alignment}
+                chapterText={chapter?.text}
+                currentTime={player.currentTime}
+                currentSentenceIndex={player.currentSentenceIndex}
+                onSeek={(s) => player.seek(s)}
+              />
+            </div>
+          )}
+
+          {activeTab === 'chapter-info' && (
+            <ChapterInfoView
+              chapter={chapter}
+              estimatedCredits={estimatedCredits}
+              readingMinutes={estimateReadingMinutes(chapter?.text)}
+              wordCount={estimateWordCount(chapter?.text)}
+              charCount={estimateCharCount(chapter?.text)}
+              hasAudio={!!audioResult}
+              audioDuration={player.duration}
+            />
+          )}
+        </div>
+
+        {/* Right Audio Settings Panel */}
+        <div className="w-[320px] shrink-0 border-l border-border bg-card flex flex-col overflow-y-auto scrollbar-thin px-4 py-4 gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Audio settings</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Choose language, voice and speed to generate audio.
+            </p>
+          </div>
+
+          {/* Language dropdown */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Language
+            </p>
+            <select
+              value={selectedLanguage}
+              onChange={(e) => setSelectedLanguage(e.target.value)}
+              className="w-full appearance-none bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground pr-8 focus:outline-none focus:ring-2 focus:ring-terracotta/40 cursor-pointer"
+            >
+              {Object.entries(LABELS).map(([code, label]) => (
+                <option key={code} value={code}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Voice cards */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Voice
+              </p>
+              <button className="text-xs text-terracotta font-medium hover:underline">
+                View all &rarr;
+              </button>
+            </div>
+            <VoiceSelector
+              language={selectedLanguage}
+              selectedVoice={selectedVoice}
+              onSelect={({ voiceProfile, languageCode }) => {
+                setSelectedVoice(voiceProfile);
+                if (languageCode) setSelectedLanguage(languageCode);
+              }}
+              onLanguageChange={(lang) => setSelectedLanguage(lang)}
+            />
+          </div>
+
+          {/* Playback speed slider */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Playback speed
+              </p>
+              <span className="text-xs text-terracotta font-medium">{speed.toFixed(1)}x &rsaquo;</span>
+            </div>
+            <Slider
+              min={0.5}
+              max={2}
+              step={0.1}
+              value={[speed]}
+              onValueChange={([v]) => { setSpeed(v); player.setPlaybackRate(v); }}
+              className="terracotta-slider"
+            />
+          </div>
+
+          {/* Estimated credits card */}
+          <div className="rounded-lg p-3 flex items-center justify-between border border-border bg-muted/50">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Estimated credits
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Based on {estimateReadingMinutes(chapter?.text)} min of audio
+              </p>
+            </div>
+            <span className="text-lg font-bold text-terracotta">{estimatedCredits}</span>
+          </div>
+
+          {/* Generate Audio */}
+          <button
+            onClick={() =>
+              handleGenerate({
+                language: selectedLanguage,
+                voiceProfile: selectedVoice,
+                speed,
+                submit: true,
+              })
+            }
+            disabled={isGenerating || !selectedVoice || !chapter}
+            className="w-full bg-foreground text-background rounded-lg py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
+          >
+            {isGenerating ? (
+              <>
+                <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                Generating…
+              </>
+            ) : (
+              <>
+                <Zap className="h-4 w-4" />
+                Generate Audio
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!book) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
@@ -193,91 +526,37 @@ function Dashboard() {
   }
 
   return (
-    <MainLayout
-      book={book}
-      activeChapterIdx={activeIdx}
-      chapter={chapter}
-      onChapterSelect={selectChapter}
-      onLoadNewBook={resetBook}
-      onOpenConfig={() => setIsConfigOpen(true)}
-    >
-      <div className="h-full flex flex-col overflow-hidden">
-        {/* Top panel: transcript area */}
-        <div className="flex-1 overflow-hidden flex gap-0">
-          {/* Transcript */}
-          <div className="flex-1 overflow-hidden flex flex-col min-w-0">
-            <div className="px-6 pt-5 pb-3 shrink-0">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-semibold truncate">{chapter.title}</h2>
-              </div>
-              <div className="mt-2">
-                <CreditEstimateBadge text={chapter.text} />
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto px-6 pb-4 scrollbar-thin">
-              <ReadAlongPlayer
-                audioUrl={audioUrl}
-                alignment={alignment}
-                chapterText={chapter.text}
-                onPlay={onPlay}
-                onPause={onPause}
-                onRewind={onRewind}
-                onForward={onForward}
-              />
-            </div>
-          </div>
-          {/* Voice, language and speed controls */}
-          <div className="w-full min-w-[15rem] md:w-[18rem] border-l border-border bg-sidebar p-3 flex flex-col gap-4">
-            <VoiceSelector
-              language={selectedLanguage}
-              selectedVoice={selectedVoice}
-              onSelect={({ voiceProfile, languageCode }) => {
-                setSelectedVoice(voiceProfile);
-                if (languageCode) setSelectedLanguage(languageCode);
-              }}
-              onLanguageChange={(language) => setSelectedLanguage(language)}
-            />
-            <div className="text-xs text-muted-foreground font-medium" >Speed</div>
-            <Slider
-              min={0.7}
-              max={2}
-              step={0.1}
-              value={[speed]}
-              onValueChange={([v]) => setSpeed(v)}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="self-end"
-              disabled={!audioResult}
-              onClick={resetBook}
-            >
-              Reset book
-            </Button>
-          </div>
-        </div>
-        {error && (
-          <div className="px-4 py-2 border-b border-destructive/20 bg-destructive/5">
-            <p className="text-sm text-destructive px-6">{error}</p>
-          </div>
-        )}
-        <BottomPlayer
-          audioUrl={audioUrl}
-          isPlaying={player.isPlaying}
-          currentTime={player.currentTime}
-          duration={player.duration}
-          playbackRate={player.playbackRate}
-          currentChapterTitle={chapter?.title}
-          onPlay={onPlay}
-          onPause={onPause}
-          onRewind={onRewind}
-          onForward={onForward}
-          onSeek={(seconds) => player.seek(seconds)}
-          onRateChange={(rate) => player.setPlaybackRate(rate)}
-        />
-      </div>
+    <>
+      <MainLayout
+        book={book}
+        activeChapterIdx={activeIdx}
+        chapter={chapter}
+        onChapterSelect={selectChapter}
+        onLoadNewBook={resetBook}
+        onOpenConfig={() => setIsConfigOpen(true)}
+        bottomBar={
+          <BottomPlayer
+            audioUrl={audioUrl}
+            isPlaying={player.isPlaying}
+            currentTime={player.currentTime}
+            duration={player.duration}
+            playbackRate={player.playbackRate}
+            currentChapterTitle={chapter?.title}
+            bookTitle={book?.title}
+            bookCoverUrl={book?.coverUrl}
+            onPlay={onPlay}
+            onPause={onPause}
+            onRewind={onRewind}
+            onForward={onForward}
+            onSeek={(seconds) => player.seek(seconds)}
+            onRateChange={(rate) => { setSpeed(rate); player.setPlaybackRate(rate); }}
+          />
+        }
+      >
+        {studioContent}
+      </MainLayout>
       {configModal}
-    </MainLayout>
+    </>
   );
 }
 

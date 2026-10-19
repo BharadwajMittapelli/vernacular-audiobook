@@ -1,15 +1,33 @@
 import React from 'react';
 import { BookOpen, Mic, Library, Settings, Menu, X } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 const NAV_ITEMS = [
   { label: 'Studio', icon: Mic, active: true },
-  { label: 'My Projects', icon: BookOpen, active: false },
+  { label: 'My Books', icon: BookOpen, active: false },
   { label: 'Audio Library', icon: Library, active: false },
   { label: 'Settings', icon: Settings, active: false },
 ];
 
+function estimateMinutes(ch) {
+  if (!ch || !ch.text) return 0;
+  const words = ch.text.replace(/[#*`_\[\]]/g, '').trim().split(/\s+/).filter(Boolean).length;
+  return Math.ceil(words / 160);
+}
+
 export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, isMobileOpen, onCloseMobile }) {
+  const { session } = useAuth();
+  const user = session?.user;
+  const avatarUrl = user?.user_metadata?.avatar_url || null;
+  const fullName = user?.user_metadata?.full_name || user?.email || 'User';
+  const email = user?.email || '';
+  const initials = fullName
+    .split(' ')
+    .map((s) => s[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
   return (
     <>
       {/* Mobile overlay */}
@@ -34,7 +52,7 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 h-14 border-b border-border shrink-0">
-          <BookOpen className="h-5 w-5 text-primary" />
+          <BookOpen className="h-5 w-5 text-terracotta" />
           <div className="flex flex-col leading-none">
             <span className="text-sm font-bold tracking-tight text-foreground">Ekithab AI</span>
             <span className="text-xs text-muted-foreground font-medium">Audiobook</span>
@@ -52,23 +70,20 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
         <nav className="flex-1 px-3 py-4 space-y-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            const disabled = !item.active;
             return (
               <button
                 key={item.label}
                 onClick={() => onNavClick?.(item.label)}
-                disabled={disabled}
+                disabled={!item.active}
                 className={`
                   w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
                   transition-colors
-          ${disabled
-            ? 'text-muted-foreground opacity-60 cursor-not-allowed'
-            : item.label === 'Studio'
-              ? 'bg-active text-primary font-medium'
-              : 'text-secondary-text hover:text-foreground hover:bg-muted'
-          }
+                  ${item.active
+                    ? 'bg-terracotta/10 text-terracotta font-medium'
+                    : 'text-muted-foreground opacity-60 cursor-not-allowed'
+                  }
                 `}
-                aria-current={item.label === 'Studio' ? 'page' : undefined}
+                aria-current={item.active ? 'page' : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span>{item.label}</span>
@@ -77,10 +92,19 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
           })}
         </nav>
 
-        {/* Chapter list */}
+        {/* Current Book section */}
         {book && (
-          <div className="px-3 pb-3 border-t border-border pt-3">
-            <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="px-3 pb-2 border-t border-border pt-3">
+            <div className="flex items-center gap-2 px-1 mb-2">
+              <div className="w-6 h-8 shrink-0 rounded bg-terracotta/20 flex items-center justify-center text-[9px] font-bold text-terracotta">
+                {book.title?.slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-foreground truncate">{book.title}</p>
+                <p className="text-xs text-muted-foreground">{book.chapters.length} chapters</p>
+              </div>
+            </div>
+            <p className="px-1 mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Chapters
             </p>
             <div className="space-y-0.5 max-h-48 overflow-y-auto scrollbar-thin">
@@ -89,27 +113,55 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
                   key={ch.chapterId}
                   onClick={() => onChapterSelect?.(i)}
                   className={`
-                    w-full text-left px-3 py-1.5 rounded-md text-sm truncate transition-colors
+                    w-full flex items-center text-left px-1 py-1.5 rounded-md text-sm transition-colors
                   ${i === activeChapterIdx
-                    ? 'bg-active text-primary font-medium'
+                    ? 'bg-terracotta/10 text-terracotta font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                   }
                   `}
                   aria-current={i === activeChapterIdx ? 'true' : undefined}
                 >
-                  {ch.title}
+                  <span className="text-xs text-muted-foreground shrink-0 mr-1.5 font-mono">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span className="truncate flex-1">{ch.title}</span>
+                  <span className="text-xs text-muted-foreground shrink-0 ml-1">
+                    {estimateMinutes(ch)}m
+                  </span>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {/* Footer credit area */}
-        <div className="px-5 py-4 border-t border-border shrink-0">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {/* Footer status */}
+        <div className="px-5 py-3 border-t border-border shrink-0">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
             <div className="w-2 h-2 rounded-full bg-success shrink-0" />
             <span>Studio Online</span>
+            <span className="text-muted-foreground/60">·</span>
+            <span className="text-muted-foreground/80">Ready to create</span>
           </div>
+          {user ? (
+            <div className="flex items-center gap-3">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={fullName} className="h-9 w-9 rounded-full object-cover" />
+              ) : (
+                <div className="h-9 w-9 rounded-full bg-terracotta/10 text-terracotta flex items-center justify-center text-xs font-semibold">
+                  {initials}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground truncate">{fullName}</p>
+                <p className="text-xs text-muted-foreground truncate">{email}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="w-2 h-2 rounded-full bg-success shrink-0" />
+              <span>Studio Online</span>
+            </div>
+          )}
         </div>
       </aside>
     </>

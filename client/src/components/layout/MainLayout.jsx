@@ -11,6 +11,7 @@ export function MainLayout({
   onLoadNewBook,
   onOpenConfig,
   children,
+  bottomBar,
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
@@ -38,9 +39,11 @@ export function MainLayout({
           onOpenConfig={onOpenConfig}
         />
 
-        <main className="flex-1 overflow-hidden">
-          {children}
-        </main>
+        <main className="flex-1 overflow-hidden">{children}</main>
+
+        {bottomBar && (
+          <div className="shrink-0">{bottomBar}</div>
+        )}
       </div>
     </div>
   );
