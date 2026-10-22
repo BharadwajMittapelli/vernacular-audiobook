@@ -7,6 +7,7 @@ import { uploadAudio, resolveAudioUrl } from '../services/storageService.js';
 import { auditAudio } from '../services/audioAuditService.js';
 import { supabase } from '../config/supabase.js';
 import { deductCredits, InsufficientCreditsError, calculateCost, refundCredits, isCreditBypassed } from '../services/creditService.js';
+import { VALID_LANGUAGES } from '../config/gnaniVoices.js';
 
 const router = express.Router();
 
@@ -48,7 +49,8 @@ router.get('/', async (req, res) => {
 // POST / — ingest a parsed document (title + chapters[]) into books + chapters tables
 router.post('/', async (req, res) => {
   try {
-    const { title, chapters } = req.body;
+    const { title, chapters, language } = req.body;
+    const effectiveLang = (language && VALID_LANGUAGES.includes(language)) ? language : 'en-IN';
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ success: false, error: 'Missing or empty title' });
@@ -75,6 +77,7 @@ router.post('/', async (req, res) => {
         total_chapters: chapters.length,
         completed_chapters: 0,
         status: 'pending',
+        language: effectiveLang,
       })
       .select('*')
       .single();
@@ -94,6 +97,7 @@ router.post('/', async (req, res) => {
         char_count: cleanText.length,
         estimated_duration_seconds: Math.ceil(cleanText.length / 15),
         status: 'pending',
+        language: effectiveLang,
       };
     }).filter(Boolean);
 
@@ -117,7 +121,7 @@ router.post('/', async (req, res) => {
 
     res.json({
       success: true,
-      book: { id: book.id, title: book.title, total_chapters: book.total_chapters, completed_chapters: book.completed_chapters, status: book.status, created_at: book.created_at },
+      book: { id: book.id, title: book.title, total_chapters: book.total_chapters, completed_chapters: book.completed_chapters, status: book.status, created_at: book.created_at, language: book.language },
       chapters: insertedChapters || [],
     });
   } catch (error) {

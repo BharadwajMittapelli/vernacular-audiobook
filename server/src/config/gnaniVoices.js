@@ -61,3 +61,7 @@ export const GNANI_VOICES = [
 ];
 
 export default GNANI_VOICES;
+
+// Canonical list of supported language codes; derived from GNANI_VOICES so
+// route handlers can validate without importing the full objects array.
+export const VALID_LANGUAGES = [...new Set(GNANI_VOICES.map((v) => v.languageCode))];
