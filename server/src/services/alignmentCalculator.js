@@ -49,6 +49,6 @@ export function calculateAlignment(originalText, timestamps, totalDuration) {
 function splitIntoSentences(text) {
   return text
     .replace(/[#*`_\[\]]/g, '')
-    .split(/(?<=[.!?])\s+/)
+    .split(/(?<=[.!?।])\s+/)
     .filter(s => s.trim().length > 0);
 }

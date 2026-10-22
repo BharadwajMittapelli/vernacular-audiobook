@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { v4 as uuidv4 } from 'uuid';
 import { stripMarkdown } from '../services/textProcessor.js';
 import { synthesizeText } from '../services/ttsProvider.js';
@@ -8,6 +9,24 @@ import { supabase } from '../config/supabase.js';
 import { deductCredits, InsufficientCreditsError, calculateCost, refundCredits, isCreditBypassed } from '../services/creditService.js';
 
 const router = express.Router();
+
+// Credit-spending endpoints keep the documented tight buckets (global limiter is 60/min).
+const chapterTtsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  message: { success: false, error: 'Too many synthesis requests, max 5 per minute' },
+});
+const bulkLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 2,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  message: { success: false, error: 'Too many bulk requests, please try again later' },
+});
 
 // GET / — list books for the authenticated user
 router.get('/', async (req, res) => {
@@ -108,7 +127,7 @@ router.post('/', async (req, res) => {
 });
 
 // POST /:bookId/synthesize-all — bulk chapter synthesis (detached in-memory worker)
-router.post('/:bookId/synthesize-all', async (req, res) => {
+router.post('/:bookId/synthesize-all', bulkLimiter, async (req, res) => {
   try {
     const { bookId } = req.params;
     const { language, voiceProfile, speed } = req.body;
@@ -431,8 +450,8 @@ router.put('/chapters/:chapterId', async (req, res) => {
   }
 });
 
-// POST /chapters/:chapterId/synthesize — generate audio for a single chapter
-router.post('/chapters/:chapterId/synthesize', async (req, res) => {
+// POST /chapters/:chapterId/synthesize — single-chapter synthesis (spend endpoint)
+router.post('/chapters/:chapterId/synthesize', chapterTtsLimiter, async (req, res) => {
   try {
     const { chapterId } = req.params;
     const { language, voiceProfile, speed } = req.body;

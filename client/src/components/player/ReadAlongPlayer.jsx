@@ -9,19 +9,18 @@ export function ReadAlongPlayer({
   currentSentenceIndex = -1,
   onSeek,
 }) {
-  // Priority 1: Audio exists with alignment data — show synchronized transcript
+  // Priority 1: Audio + alignment — show translated synced transcript
   if (audioUrl && alignment?.length > 0) {
     return (
       <TranscriptHighlighter
         alignment={alignment}
-        currentTime={currentTime}
         currentSentenceIndex={currentSentenceIndex}
         onSeek={onSeek}
       />
     );
   }
 
-  // Priority 2: Audio exists but alignment missing — show sync-unavailable message
+  // Priority 2: Audio exists but no alignment — show message
   if (audioUrl) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
@@ -33,7 +32,7 @@ export function ReadAlongPlayer({
     );
   }
 
-  // Priority 3: Chapter text exists — show plain formatted text
+  // Priority 3: No audio — show raw chapter text (pre-generation state)
   const hasText = chapterText && chapterText.trim().length > 0;
   if (hasText) {
     return (
@@ -43,7 +42,7 @@ export function ReadAlongPlayer({
     );
   }
 
-  // Priority 4: No content available — empty state
+  // Priority 4: Nothing available
   return (
     <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
       <p className="text-center text-sm">No content available</p>

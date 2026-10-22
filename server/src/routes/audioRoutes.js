@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { v4 as uuidv4 } from 'uuid';
 import { chunkText, stripMarkdown } from '../services/textProcessor.js';
 import { synthesizeText } from '../services/ttsProvider.js';
@@ -59,9 +60,19 @@ router.get('/:chapterId', async (req, res) => {
   }
 });
 
-// POST /api/audio/synthesize
+// POST /api/audio/synthesize — spend endpoint: documented 5/min threat-model cap
+const ttsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  message: { success: false, error: 'Too many synthesis requests, max 5 per minute' },
+});
+
 router.post(
   '/synthesize',
+  ttsLimiter,
   creditGuardMiddleware,
   async (req, res) => {
     try {

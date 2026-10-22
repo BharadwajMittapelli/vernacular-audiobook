@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
+    "@vitalets/google-translate-api": "^9.2.1",
     "adm-zip": "^0.6.1",
     "axios": "^1.6.2",
     "bullmq": "^6.3.12",

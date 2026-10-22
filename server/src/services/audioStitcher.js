@@ -64,26 +64,26 @@ export function stitch(audioBuffers, chunkTimestamps, chunkDurations) {
  * @returns {number} Duration in seconds
  */
 export function getWavDuration(wavBuffer) {
-  if (wavBuffer.length < WAV_HEADER_SIZE) {
+  if (wavBuffer.length < 44 || wavBuffer.toString('ascii', 0, 4) !== 'RIFF') {
     return 0;
   }
 
-  // WAV format: bytes 24-27 = sample rate, bytes 34-35 = bits per sample
-  // bytes 22-23 = number of channels
-  const sampleRate = wavBuffer.readUInt32LE(24);
-  const bitsPerSample = wavBuffer.readUInt16LE(34);
-  const numChannels = wavBuffer.readUInt16LE(22);
-
-  // Data chunk starts at byte 44, size at bytes 40-43
-  const dataSize = wavBuffer.readUInt32LE(40);
-  const bytesPerSample = bitsPerSample / 8;
-  const blockAlign = numChannels * bytesPerSample;
-
-  if (!sampleRate || !blockAlign) {
-    return 0;
+  // Walk chunks: Gnani streams WAV with data size = 0xFFFFFFFF sentinel, so
+  // clamp the reported size to the bytes actually present.
+  let p = 12;
+  let byteRate = 0;
+  while (p + 8 <= wavBuffer.length) {
+    const id = wavBuffer.toString('ascii', p, p + 4);
+    const size = wavBuffer.readUInt32LE(p + 4);
+    if (id === 'fmt ') {
+      byteRate = wavBuffer.readUInt32LE(p + 16);
+    } else if (id === 'data') {
+      const available = wavBuffer.length - (p + 8);
+      return Math.min(size, available) / byteRate;
+    }
+    p += 8 + size + (size % 2);
   }
-
-  return dataSize / (sampleRate * blockAlign);
+  return 0;
 }
 
 /**

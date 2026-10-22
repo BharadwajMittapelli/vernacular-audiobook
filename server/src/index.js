@@ -49,17 +49,22 @@ app.use(express.json({ limit: '50mb' }));
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: 60,
   message: {
     success: false,
-    error: 'Too many requests from this IP, please try again after a minute',
+    error: 'Too many requests, please slow down',
   },
   standardHeaders: true,
   legacyHeaders: false,
   // Use X-Forwarded-For header when behind proxy
   keyGenerator: (req) => req.ip,
-  // Storefront embed has its own 60/min limiter on the router.
-  skip: (req) => req.path.startsWith('/api/storefront') || req.path.startsWith('/api/audio/synthesize-async') || req.path.startsWith('/api/voices'),
+  // Storefront embed and /api/voices have their own limiters; spend endpoints
+  // get tight per-route buckets. Health probe must not burn budget.
+  skip: (req) =>
+    req.path.startsWith('/api/storefront') ||
+    req.path.startsWith('/api/audio/synthesize-async') ||
+    req.path.startsWith('/api/voices') ||
+    req.path === '/health',
 });
 
 app.use(apiLimiter);

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function TranscriptHighlighter({ alignment, currentTime = 0, currentSentenceIndex = -1, onSeek }) {
+export function TranscriptHighlighter({ alignment, currentSentenceIndex = -1, onSeek }) {
   if (!alignment || alignment.length === 0) {
     return (
       <div className="py-12 text-center text-sm text-muted-foreground">
@@ -11,7 +11,12 @@ export function TranscriptHighlighter({ alignment, currentTime = 0, currentSente
   }
 
   return (
-    <div className="max-w-prose mx-auto space-y-1 font-serif text-base leading-relaxed" role="log" aria-label="Transcript" aria-live="polite">
+    <div
+      className="max-w-prose mx-auto space-y-1 font-serif text-base leading-relaxed"
+      role="log"
+      aria-label="Transcript"
+      aria-live="polite"
+    >
       {alignment.map((entry, index) => {
         const isActive = index === currentSentenceIndex;
         return (
