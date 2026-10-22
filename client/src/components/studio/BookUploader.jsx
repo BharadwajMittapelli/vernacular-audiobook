@@ -1,14 +1,38 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UploadCloud, FileText } from 'lucide-react';
 import { splitChapters } from '../../services/chapterSplitter.js';
-import { uploadDocument } from '../../services/api.js';
+import { uploadDocument, getVoices } from '../../services/api.js';
 
 const MAX_MB = 20;
+
+const LANGUAGE_LABELS = {
+  'en-IN': 'English',
+  'hi-IN': 'Hindi',
+  'ta-IN': 'Tamil',
+  'te-IN': 'Telugu',
+  'kn-IN': 'Kannada',
+  'ml-IN': 'Malayalam',
+  'bn-IN': 'Bengali',
+  'gu-IN': 'Gujarati',
+  'mr-IN': 'Marathi',
+  'pa-IN': 'Punjabi',
+};
 
 export function BookUploader({ onDocumentLoaded }) {
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [language, setLanguage] = useState('en-IN');
+  const [languages, setLanguages] = useState(Object.keys(LANGUAGE_LABELS));
+
+  useEffect(() => {
+    getVoices()
+      .then((vs) => {
+        const codes = [...new Set(vs.map((v) => v.languageCode))];
+        if (codes.length) setLanguages(codes);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleFile = (file) => {
     if (!file || uploading) return;
@@ -19,7 +43,7 @@ export function BookUploader({ onDocumentLoaded }) {
     const ext = file.name.split('.').pop().toLowerCase();
     if (ext === 'pdf' || ext === 'epub') {
       setUploading(true);
-      return uploadDocument(file)
+      return uploadDocument(file, language)
         .then((res) => {
           if (!res || typeof res.title !== 'string' || !Array.isArray(res.chapters)) {
             throw new Error('Invalid server response: expected { title, chapters }');
@@ -53,6 +77,27 @@ export function BookUploader({ onDocumentLoaded }) {
         <h2 className="text-xl font-semibold mb-1">Start a New Project</h2>
         <p className="text-sm text-muted-foreground">
           Upload a book to begin generating audiobooks
+        </p>
+      </div>
+
+      <div>
+        <label htmlFor="upload-language" className="block text-sm font-medium mb-1.5">
+          Language
+        </label>
+        <select
+          id="upload-language"
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+        >
+          {languages.map((code) => (
+            <option key={code} value={code}>
+              {LANGUAGE_LABELS[code] ?? code} ({code})
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground mt-1.5">
+          Used when .pdf, .epub and .docx files are parsed on the server
         </p>
       </div>
 
