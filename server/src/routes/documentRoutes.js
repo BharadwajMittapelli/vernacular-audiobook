@@ -9,7 +9,7 @@ import mammoth from 'mammoth';
 import { splitTextIntoChapters } from '../utils/chapterSplitter.js';
 import { VALID_LANGUAGES } from '../config/gnaniVoices.js';
 
-const INDIC_RE = /[\u0900-\u097F\u0C00-\u0C7F]/;
+const INDIC_RE = /[\u0900-\u0D7F]/;
 
 const upload = multer({
   storage: multer.memoryStorage(),

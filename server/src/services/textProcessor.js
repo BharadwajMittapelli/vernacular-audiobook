@@ -1,12 +1,17 @@
 const CHUNK_MAX_CHARS = 400;
 
-const INDIC_LANG_CODES = ['hi', 'te', 'ta', 'kn'];
+const INDIC_LANG_CODES = ['hi', 'te', 'ta', 'kn', 'ml', 'mr', 'pa', 'bn', 'gu'];
 
 const GNANI_LOCALE_TO_ISO = {
   'hi-IN': 'hi',
   'te-IN': 'te',
   'ta-IN': 'ta',
   'kn-IN': 'kn',
+  'ml-IN': 'ml',
+  'mr-IN': 'mr',
+  'bn-IN': 'bn',
+  'gu-IN': 'gu',
+  'pa-IN': 'pa',
 };
 
 const GOOGLE_MAX_CHARS = 1500;
@@ -26,7 +31,7 @@ export async function translateToIndic(text, targetLangCode) {
   if (!text || text.trim().length === 0) return text;
 
   // Short-circuit: if text already contains Indic script, skip translation.
-  if (/[\u0900-\u097F\u0C00-\u0C7F]/.test(text)) return text;
+  if (/[\u0900-\u0D7F]/.test(text)) return text;
 
   const translateWithGoogle = async (chunk) => {
     const mod = await import('@vitalets/google-translate-api');
