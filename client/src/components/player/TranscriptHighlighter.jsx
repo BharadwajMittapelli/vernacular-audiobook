@@ -1,6 +1,21 @@
 import React from 'react';
 
 export function TranscriptHighlighter({ alignment, currentSentenceIndex = -1, onSeek }) {
+  const containerRef = React.useRef(null);
+  const nodeByIndex = React.useRef({});
+  const [autoFollow, setAutoFollow] = React.useState(true);
+
+  // Auto-scroll fires only when the active sentence INDEX changes (or follow
+  // is toggled back on), never on every timeupdate tick.
+  React.useEffect(() => {
+    if (autoFollow && currentSentenceIndex >= 0) {
+      nodeByIndex.current[currentSentenceIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [currentSentenceIndex, autoFollow]);
+
   if (!alignment || alignment.length === 0) {
     return (
       <div className="py-12 text-center text-sm text-muted-foreground">
@@ -10,23 +25,46 @@ export function TranscriptHighlighter({ alignment, currentSentenceIndex = -1, on
     );
   }
 
+  const suspendFollow = () => setAutoFollow(false);
+  const handleSentenceActivate = (startTime) => {
+    setAutoFollow(true);
+    onSeek?.(startTime);
+  };
+
   return (
     <div
-      className="max-w-prose mx-auto space-y-1 font-serif text-base leading-relaxed"
+      ref={containerRef}
+      onWheel={suspendFollow}
+      onTouchMove={suspendFollow}
+      className="max-w-prose mx-auto max-h-[60vh] overflow-y-auto scrollbar-thin pr-2 space-y-1 font-serif text-base leading-relaxed"
       role="log"
       aria-label="Transcript"
       aria-live="polite"
     >
+      {!autoFollow && (
+        <div className="sticky top-0 z-10 flex justify-center py-2 pointer-events-none">
+          <button
+            onClick={() => setAutoFollow(true)}
+            className="pointer-events-auto rounded-full border border-border bg-background/90 backdrop-blur px-3 py-1 text-xs font-medium text-foreground shadow-sm hover:bg-muted transition-colors"
+          >
+            Jump to current
+          </button>
+        </div>
+      )}
       {alignment.map((entry, index) => {
         const isActive = index === currentSentenceIndex;
         return (
           <p
             key={entry.sentenceIndex ?? index}
-            onClick={() => onSeek?.(entry.startTime)}
+            ref={(el) => {
+              if (el) nodeByIndex.current[index] = el;
+              else delete nodeByIndex.current[index];
+            }}
+            onClick={() => handleSentenceActivate(entry.startTime)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                onSeek?.(entry.startTime);
+                handleSentenceActivate(entry.startTime);
               }
             }}
             tabIndex={0}
