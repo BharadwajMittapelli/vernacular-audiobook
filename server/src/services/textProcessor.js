@@ -30,6 +30,18 @@ export async function translateToIndic(text, targetLangCode) {
 
   if (!text || text.trim().length === 0) return text;
 
+  // Translate paragraph-by-paragraph and rejoin with '\n\n'. Translators
+  // collapse whitespace between chunks, so without this the paragraph
+  // structure feeding architectural spacing downstream would be destroyed.
+  const paragraphs = text.split(/[\r\n]{2,}/).filter((p) => p.trim());
+  const translated = [];
+  for (const paragraph of paragraphs) {
+    translated.push(await convertParagraph(paragraph, isoCode));
+  }
+  return translated.join('\n\n');
+}
+
+async function convertParagraph(text, isoCode) {
   // Short-circuit: if text already contains Indic script, skip translation.
   if (/[\u0900-\u0D7F]/.test(text)) return text;
 

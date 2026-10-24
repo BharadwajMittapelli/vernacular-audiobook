@@ -4,7 +4,7 @@ import axios from 'axios';
 // directly — Google itself accepts all our language codes.
 import gttsToken from 'gtts/lib/gToken.js';
 import { chunkText, translateToIndic } from './textProcessor.js';
-import { stitch, getWavDuration, getMp3Duration } from './audioStitcher.js';
+import { stitch, getWavDuration, getMp3Duration, DEFAULT_PARAGRAPH_SILENCE_MS } from './audioStitcher.js';
 import { calculateAlignment } from './alignmentCalculator.js';
 
 const GTTS_CHAR_DURATION = 0.06;
@@ -127,44 +127,64 @@ function gnaniConfig() {
 
 // Gnani REST TTS returns raw binary WAV (no timestamps — confirmed against
 // docs.gnani.ai 2026-10). Sentence alignment is estimated per chunk, same as the gTTS path.
+//
+// Architectural paragraph spacing: chapters are split on blank lines and each
+// paragraph synthesized separately, then stitched with a 600 ms silent PCM gap
+// between paragraphs (never between sentence-splits of one paragraph), so
+// Read-Along prosody matches the page structure instead of Gnani's flat
+// period-length micro-pause for "\n\n".
+async function callGnaniApi({ endpoint, headers }, text, language, voice, speed) {
+  console.log(`[Gnani] POST ${endpoint}`, { textPreview: text.slice(0, 80), voice, model: 'timbre-v2.5', language, speed });
+  try {
+    const res = await axios.post(
+      endpoint,
+      {
+        text,
+        voice,
+        model: 'timbre-v2.5',
+        language,
+        speed,
+        audio_config: { container: 'wav', sample_rate: 48000, num_channels: 1, sample_width: 2 },
+      },
+      { headers, responseType: 'arraybuffer', timeout: 30000 }
+    );
+    console.log(`[Gnani] Response: status=${res.status} size=${res.data.length}B`);
+    return Buffer.from(res.data);
+  } catch (error) {
+    // Classify errors so the gTTS fallback and refund gates still work.
+    if (error.response) {
+      console.log(`[Gnani] Error: status=${error.response.status} body=${error.response.data?.toString?.()?.slice(0, 300) ?? 'no body'}`);
+      const err = new Error(`Gnani API error ${error.response.status}: ${error.response.data?.toString?.() ?? ''}`);
+      err.httpStatus = error.response.status;
+      throw err;
+    }
+    const err = new Error(`Gnani API request failed: ${error.message}`);
+    err.retryableCode = error.code;
+    throw err;
+  }
+}
+
 async function synthesizeWithGnani(text, language, voice, speed = 1.0) {
   const { endpoint, headers } = gnaniConfig();
+
+  const paragraphs = text.split(/[\r\n]{2,}/).filter((p) => p.trim());
+
+  // 400-char API cap stays enforced: long paragraphs still split at sentence
+  // boundaries, but silence is only injected at paragraph boundaries.
+  const pieces = [];
+  paragraphs.forEach((paragraph, paragraphIndex) => {
+    for (const piece of chunkText(paragraph)) {
+      pieces.push({ piece, paragraphIndex });
+    }
+  });
+
   const audioBuffers = [];
   const chunkTimestamps = [];
   const chunkDurations = [];
+  const pieceParagraphIndexes = [];
 
-  const chunks = chunkText(text);
-
-  for (const chunk of chunks) {
-    let audioBuffer;
-    try {
-      console.log(`[Gnani] POST ${endpoint}`, { textPreview: chunk.slice(0, 80), voice, model: 'timbre-v2.5', language, speed });
-      const res = await axios.post(
-        endpoint,
-        {
-          text: chunk,
-          voice,
-          model: 'timbre-v2.5',
-          language,
-          speed,
-          audio_config: { container: 'wav', sample_rate: 48000, num_channels: 1, sample_width: 2 },
-        },
-        { headers, responseType: 'arraybuffer', timeout: 30000 }
-      );
-      audioBuffer = Buffer.from(res.data);
-      console.log(`[Gnani] Response: status=${res.status} size=${res.data.length}B`);
-    } catch (error) {
-      // Classify errors so the gTTS fallback and refund gates still work.
-      if (error.response) {
-        console.log(`[Gnani] Error: status=${error.response.status} body=${error.response.data?.toString?.()?.slice(0, 300) ?? 'no body'}`);
-        const err = new Error(`Gnani API error ${error.response.status}: ${error.response.data?.toString?.() ?? ''}`);
-        err.httpStatus = error.response.status;
-        throw err;
-      }
-      const err = new Error(`Gnani API request failed: ${error.message}`);
-      err.retryableCode = error.code;
-      throw err;
-    }
+  for (const { piece, paragraphIndex } of pieces) {
+    const audioBuffer = await callGnaniApi({ endpoint, headers }, piece, language, voice, speed);
 
     const chunkDuration = getWavDuration(audioBuffer);
     if (audioBuffer.length === 0 || !chunkDuration) {
@@ -172,14 +192,20 @@ async function synthesizeWithGnani(text, language, voice, speed = 1.0) {
     }
 
     audioBuffers.push(audioBuffer);
-    chunkTimestamps.push([{ start: 0, end: chunkDuration, word: chunk.trim() }]);
+    chunkTimestamps.push([{ start: 0, end: chunkDuration, word: piece.trim() }]);
     chunkDurations.push(chunkDuration);
+    pieceParagraphIndexes.push(paragraphIndex);
   }
+
+  // gapIndices[i] = true → chunk i and i+1 belong to different paragraphs.
+  const gapIndices = audioBuffers.slice(1).map((_, i) => pieceParagraphIndexes[i] !== pieceParagraphIndexes[i + 1]);
 
   const { mergedBuffer, cumulativeTimestamps, totalDuration } = stitch(
     audioBuffers,
     chunkTimestamps,
-    chunkDurations
+    chunkDurations,
+    DEFAULT_PARAGRAPH_SILENCE_MS,
+    gapIndices
   );
 
   const alignment = calculateAlignment(text, cumulativeTimestamps, totalDuration);
