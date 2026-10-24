@@ -442,7 +442,7 @@ router.put('/chapters/:chapterId', async (req, res) => {
       .update(updates)
       .eq('id', chapterId)
       .eq('user_id', req.user.id)
-      .select('id, sequence_number, title, char_count, estimated_duration_seconds, status')
+      .select('id, sequence_number, title, text_content, char_count, estimated_duration_seconds, status')
       .single();
 
     if (updateError) throw updateError;

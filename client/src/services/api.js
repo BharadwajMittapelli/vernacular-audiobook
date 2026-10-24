@@ -52,6 +52,10 @@ export function getChapterAudio(chapterId) {
   return api.get(`/api/audio/${chapterId}`).then((res) => res.data);
 }
 
+export function updateChapter(chapterId, payload) {
+  return api.put(`/api/studio/chapters/${chapterId}`, payload).then((res) => res.data);
+}
+
 export function uploadDocument(file, language) {
   const form = new FormData();
   form.append('file', file);

@@ -9,6 +9,8 @@ import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { MainLayout } from '../components/layout/MainLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
 import { synthesizeAudio, synthesizeAsync, getChapterAudio } from '../services/api.js';
+import { cleanOcrText } from '../services/textNormalizer.js';
+import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
 import { Button } from '../components/ui/button.jsx';
 import { Zap, FileText, BookOpen, Info } from 'lucide-react';
@@ -186,6 +188,25 @@ function Dashboard() {
     loadChapterAudio(book.chapters[idx]);
   };
 
+  // PUT response returns { title, char_count, ... } — merge into local state,
+  // keeping both id keys (uploads create chapters with `id`, GET returns `chapterId`).
+  const handleChapterSaved = (c) => {
+    setBook((b) => ({
+      ...b,
+      chapters: b.chapters.map((ch, i) =>
+        i === activeIdx
+          ? {
+              ...ch,
+              ...c,
+              id: ch.id ?? c.id,
+              chapterId: ch.chapterId ?? c.id,
+              text: c.text_content,
+            }
+          : ch
+      ),
+    }));
+  };
+
   const resetBook = () => {
     setBook(null);
     setActiveIdx(0);
@@ -210,7 +231,7 @@ function Dashboard() {
 
         const result = await synthesizeAudio({
           chapterId: chapter.chapterId,
-          text: chapter.text,
+          text: cleanOcrText(chapter.text),
           language,
           voiceProfile,
           speed: selectedSpeed,
@@ -233,7 +254,7 @@ function Dashboard() {
       const res = await synthesizeAsync({
         chapters: book.chapters.map((ch) => ({
           chapterId: ch.chapterId,
-          text: ch.text,
+          text: cleanOcrText(ch.text),
           language: selectedLanguage,
           voiceProfile: selectedVoice,
           speed,
@@ -352,14 +373,7 @@ function Dashboard() {
 
           {activeTab === 'transcript' && (
             <div>
-              <ReadAlongPlayer
-                audioUrl={audioUrl}
-                alignment={alignment}
-                chapterText={chapter?.text}
-                currentTime={player.currentTime}
-                currentSentenceIndex={player.currentSentenceIndex}
-                onSeek={(s) => player.seek(s)}
-              />
+              <TranscriptEditor chapter={chapter} onSaved={handleChapterSaved} onError={setError} />
             </div>
           )}
 
