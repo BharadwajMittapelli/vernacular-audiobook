@@ -13,7 +13,7 @@ import { cleanOcrText } from '../services/textNormalizer.js';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
 import { Button } from '../components/ui/button.jsx';
-import { Zap, FileText, BookOpen, Info } from 'lucide-react';
+import { Zap, FileText, BookOpen, Info, Download } from 'lucide-react';
 
 const LABELS = {
   'en-IN': 'English',
@@ -143,6 +143,7 @@ function Dashboard() {
   const [audioResult, setAudioResult] = React.useState(null);
   const [error, setError] = React.useState(null);
   const [activeTab, setActiveTab] = React.useState('transcript');
+  const [isExporting, setIsExporting] = React.useState(false);
 
   const chapter = book ? book.chapters[activeIdx] : null;
   const alignment = audioResult?.alignment || [];
@@ -270,6 +271,54 @@ function Dashboard() {
       );
     } finally {
       setIsBulk(false);
+    }
+  };
+
+  const downloadBlob = (blob, name, revokeMs = 1000) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), revokeMs);
+  };
+
+  const handleExport = async () => {
+    if (!chapter || !audioUrl || isExporting) return;
+    setIsExporting(true);
+    setError(null);
+    const safe = (chapter.title || '').replace(/[\\/:*?"<>|]/g, '').trim() || 'Chapter';
+    try {
+      downloadBlob(
+        new Blob([cleanOcrText(chapter.text)], { type: 'text/plain;charset=utf-8' }),
+        `${safe}.txt`
+      );
+      // Signed URLs expire after 1h — refresh before fetching; fall back to the held URL.
+      let url = audioUrl;
+      try {
+        url = (await getChapterAudio(chapter.chapterId)).audioUrl || audioUrl;
+      } catch {
+        /* use held audioUrl */
+      }
+      if (!url) throw new Error('No audio URL available');
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Audio fetch failed with status: ${res.status}`);
+      const blob = await res.blob();
+      // Don't save error JSON/HTML served with 200 as an "audio" file
+      if (blob.type && !blob.type.startsWith('audio/')) {
+        throw new Error(`Unexpected audio content-type: ${blob.type}`);
+      }
+      // Strict extension: uploads always set audio/mpeg|audio/wav (storageService.js); default .wav
+      const ext = blob.type === 'audio/mpeg' || blob.type === 'audio/mp3' ? 'mp3' : 'wav';
+      // ponytail: 2000ms revoke delay so large binaries aren't cancelled mid-transfer
+      downloadBlob(blob, `${safe}.${ext}`, 2000);
+    } catch (err) {
+      console.error('Export failed:', err);
+      setError('Audio download failed — the link may have expired or CORS blocked it. Try again.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -502,6 +551,26 @@ function Dashboard() {
               <>
                 <Zap className="h-4 w-4" />
                 Generate Audio
+              </>
+            )}
+          </button>
+
+          {/* Export Package */}
+          <button
+            onClick={handleExport}
+            disabled={!audioUrl || isExporting}
+            title="Downloads transcript and audio for this chapter"
+            className="w-full border border-border rounded-lg py-3 text-sm font-semibold hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          >
+            {isExporting ? (
+              <>
+                <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                Preparing…
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Export Package
               </>
             )}
           </button>
