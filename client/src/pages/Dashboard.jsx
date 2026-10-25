@@ -538,10 +538,6 @@ function Dashboard() {
             )}
           </div>
         </div>
-              audioDuration={player.duration}
-            />
-          )}
-        </div>
 
         {/* Right Audio Settings Panel */}
         <div className="min-w-[260px] max-w-[360px] w-[30%] shrink-0 border-l border-border bg-card flex flex-col min-h-0">
