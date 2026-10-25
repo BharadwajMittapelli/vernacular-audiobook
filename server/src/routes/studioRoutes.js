@@ -126,7 +126,11 @@ router.post('/', async (req, res) => {
     });
   } catch (error) {
     console.error('POST /studio error:', error);
-    res.status(500).json({ success: false, error: 'Internal server error' });
+    // Expose actual DB error in development for debugging
+    const devError = process.env.NODE_ENV === 'development'
+      ? { message: error.message, code: error.code }
+      : undefined;
+    res.status(500).json({ success: false, error: 'Internal server error', ...(devError && { debug: devError }) });
   }
 });
 

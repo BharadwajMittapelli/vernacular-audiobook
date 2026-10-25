@@ -14,7 +14,11 @@ export default function Login() {
     setSubmitting(true);
     setError('');
     const { error } = await signIn(email, password);
-    if (error) setError(error.message || 'Login failed');
+    if (error) {
+      setError(error.message || 'Login failed');
+    } else {
+      window.location.href = '/my-books';
+    }
     setSubmitting(false);
   };
 

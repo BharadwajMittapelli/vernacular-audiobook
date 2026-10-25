@@ -70,10 +70,11 @@
   }
 }
 
-.terracotta-slider .range {
-  background: hsl(var(--terracotta));
+.terracotta-slider .radix-slider-range {
+  background: hsl(var(--terracotta)) !important;
 }
 
-.terracotta-slider .thumb {
-  border-color: hsl(var(--terracotta));
+.terracotta-slider .radix-slider-thumb {
+  border-color: hsl(var(--terracotta)) !important;
+  background: hsl(var(--terracotta)) !important;
 }

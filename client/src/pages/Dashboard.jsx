@@ -3,12 +3,13 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { VoiceSelector } from '../components/studio/VoiceSelector.jsx';
 import { Slider } from '../components/ui/slider.jsx';
 import { ReadAlongPlayer } from '../components/player/ReadAlongPlayer.jsx';
-import { BookUploader } from '../components/studio/BookUploader.jsx';
+
 import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { MainLayout } from '../components/layout/MainLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
-import { synthesizeAudio, synthesizeAsync, getChapterAudio } from '../services/api.js';
+import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails } from '../services/api.js';
+import { useNavigate } from '../context/NavigateContext.jsx';
 import { cleanOcrText } from '../services/textNormalizer.js';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
@@ -45,6 +46,14 @@ function estimateReadingMinutes(text) {
 
 function estimateCredits(text) {
   return Math.ceil((text || '').replace(/[#*`_\[\]]/g, '').trim().length / 100);
+}
+
+function cleanOcrText(text) {
+  if (!text) return '';
+  return text
+    .replace(/[#*`_\[\]]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function ErrorBanner({ children }) {
@@ -131,6 +140,7 @@ function ChapterInfoView({ chapter, estimatedCredits, readingMinutes, wordCount,
 
 function Dashboard() {
   const { signOut } = useAuth();
+  const navigate = useNavigate();
   const [book, setBook] = React.useState(null);
   const [activeIdx, setActiveIdx] = React.useState(0);
   const [isConfigOpen, setIsConfigOpen] = React.useState(false);
@@ -144,6 +154,81 @@ function Dashboard() {
   const [error, setError] = React.useState(null);
   const [activeTab, setActiveTab] = React.useState('transcript');
   const [isExporting, setIsExporting] = React.useState(false);
+  const initializedFromUrlRef = React.useRef(false);
+  const [isLoadingBook, setIsLoadingBook] = React.useState(false);
+
+  // Initialize from ?bookId query parameter on mount
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const bookId = params.get('bookId');
+    if (!bookId) {
+      navigate('/my-books');
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingBook(true);
+    (async () => {
+      try {
+        const res = await getBookDetails(bookId);
+        if (cancelled) return;
+        setIsLoadingBook(false);
+        if (!res || !res.success) return;
+        if (!res.chapters || res.chapters.length === 0) {
+          setError('No chapters found for this book');
+          return;
+        }
+        // Fetch full chapter data (including text) via getChapterDetails for each chapter
+        const chaptersWithText = await Promise.all(
+          res.chapters.map(async (ch) => {
+            const chapterRes = await getChapterDetails(ch.id);
+            if (!chapterRes || !chapterRes.success || !chapterRes.chapter) {
+              throw new Error(`Failed to load chapter: ${ch.id}`);
+            }
+            return {
+              chapterId: ch.id,
+              title: ch.title,
+              text: chapterRes.chapter.text_content,
+            };
+          })
+        );
+        if (cancelled) return;
+        setIsLoadingBook(false);
+        const frontendBook = {
+          title: res.book.title,
+          chapters: chaptersWithText,
+          coverUrl: res.book.cover_url,
+        };
+        setBook(frontendBook);
+        setActiveIdx(0);
+        setAudioResult(null);
+        setBulkStatus(null);
+        setError(null);
+        initializedFromUrlRef.current = true;
+        // Clean URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('bookId');
+        window.history.replaceState({}, '', url.toString());
+        // Load audio for first chapter
+        if (chaptersWithText[0]) loadChapterAudio(chaptersWithText[0]);
+      } catch (err) {
+        if (cancelled) return;
+        setIsLoadingBook(false);
+        const status = err.response?.status;
+        if (status === 404) {
+          setError('Book not found. It may have been deleted.');
+        } else {
+          setError(err.response?.data?.error || err.message || 'Failed to load book');
+        }
+        // Clean URL on failure
+        const url = new URL(window.location.href);
+        url.searchParams.delete('bookId');
+        window.history.replaceState({}, '', url.toString());
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
 
   const chapter = book ? book.chapters[activeIdx] : null;
   const alignment = audioResult?.alignment || [];
@@ -162,8 +247,10 @@ function Dashboard() {
   const loadChapterAudio = React.useCallback(async (ch) => {
     setAudioResult(null);
     try {
-      const res = await getChapterAudio(ch.chapterId);
-      if (res.success) setAudioResult(res);
+      const res = await getChapterDetails(ch.chapterId);
+      if (res.success && res.audio) {
+        setAudioResult({ audioUrl: res.audio.audioUrl, alignment: res.audio.alignment || [] });
+      }
     } catch (err) {
       const status = err.response?.status;
       if (status !== 404) {
@@ -172,15 +259,6 @@ function Dashboard() {
       }
     }
   }, []);
-
-  const handleDocumentLoaded = ({ title, chapters }) => {
-    setBook({ title, chapters });
-    setActiveIdx(0);
-    setAudioResult(null);
-    setBulkStatus(null);
-    setError(null);
-    loadChapterAudio(chapters[0]);
-  };
 
   const selectChapter = (idx) => {
     setActiveIdx(idx);
@@ -209,11 +287,7 @@ function Dashboard() {
   };
 
   const resetBook = () => {
-    setBook(null);
-    setActiveIdx(0);
-    setAudioResult(null);
-    setBulkStatus(null);
-    setError(null);
+    navigate('/my-books');
   };
 
   const handleGenerate = async (config) => {
@@ -355,16 +429,20 @@ function Dashboard() {
   const studioContent = (
     <div className="h-full flex flex-col bg-background">
       {/* Book header */}
-      <div className="shrink-0 px-8 py-2 flex items-center gap-4 border-b border-border">
-        <div className="w-12 h-16 shrink-0 rounded-md bg-terracotta/20 flex items-center justify-center text-terracotta text-sm font-bold">
-          {book?.title?.slice(0, 2).toUpperCase()}
+      <div className="shrink-0 px-4 py-1.5 flex items-center gap-3 border-b border-border">
+        <div className="w-8 h-11 shrink-0 rounded-md bg-terracotta/20 flex items-center justify-center text-terracotta text-xs font-bold overflow-hidden">
+          {book?.coverUrl ? (
+            <img src={book.coverUrl} alt="" className="w-full h-full object-cover" />
+          ) : (
+            book?.title?.slice(0, 2).toUpperCase()
+          )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-muted-foreground mb-0.5 font-medium">{book?.title}</p>
-          <h1 className="text-3xl font-serif font-semibold text-foreground leading-tight">
+          <p className="text-[11px] text-muted-foreground font-medium truncate">{book?.title}</p>
+          <h1 className="text-base font-serif font-semibold text-foreground leading-tight truncate">
             {chapter?.title}
           </h1>
-          <span className="text-xs text-muted-foreground mt-0.5 shrink-0">
+          <span className="text-[11px] text-muted-foreground">
             Ch. {activeIdx + 1} / {book?.chapters?.length ?? 0}
           </span>
         </div>
@@ -388,7 +466,7 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="shrink-0 px-8 pt-1 flex items-center gap-6">
+      <div className="shrink-0 px-4 pt-1 flex items-center gap-6">
         {[
           { key: 'transcript', label: 'Transcript', icon: FileText },
           { key: 'read-along', label: 'Read Along', icon: BookOpen },
@@ -453,7 +531,7 @@ function Dashboard() {
         </div>
 
         {/* Right Audio Settings Panel */}
-        <div className="w-[320px] shrink-0 border-l border-border bg-card flex flex-col overflow-y-auto scrollbar-thin px-4 py-4 gap-4">
+        <div className="w-[300px] shrink-0 border-l border-border bg-card flex flex-col min-h-0 overflow-y-auto px-3 py-3 gap-3 scrollbar-thin">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Audio settings</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -487,15 +565,17 @@ function Dashboard() {
                 View all &rarr;
               </button>
             </div>
-            <VoiceSelector
-              language={selectedLanguage}
-              selectedVoice={selectedVoice}
-              onSelect={({ voiceProfile, languageCode }) => {
-                setSelectedVoice(voiceProfile);
-                if (languageCode) setSelectedLanguage(languageCode);
-              }}
-              onLanguageChange={(lang) => setSelectedLanguage(lang)}
-            />
+            <div className="space-y-2">
+              <VoiceSelector
+                language={selectedLanguage}
+                selectedVoice={selectedVoice}
+                onSelect={({ voiceProfile, languageCode }) => {
+                  setSelectedVoice(voiceProfile);
+                  if (languageCode) setSelectedLanguage(languageCode);
+                }}
+                onLanguageChange={(lang) => setSelectedLanguage(lang)}
+              />
+            </div>
           </div>
 
           {/* Playback speed slider */}
@@ -579,7 +659,18 @@ function Dashboard() {
     </div>
   );
 
-  if (!book) {
+  if (isLoadingBook) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-muted-foreground">Loading book…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!book && error) {
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <header className="border-b border-border bg-sidebar/50 h-14 flex items-center px-4">
@@ -592,18 +683,29 @@ function Dashboard() {
           </div>
         </header>
         <main className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full max-w-xl">
-            <BookUploader onDocumentLoaded={handleDocumentLoaded} />
-          </div>
-          {error && (
-            <div className="px-4 pb-4">
-              <div className="max-w-xl mx-auto rounded-lg p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                {error}
-              </div>
+          <div className="w-full max-w-xl text-center">
+            <ErrorBanner>{error}</ErrorBanner>
+            <div className="flex gap-3 justify-center mt-4">
+              <Button onClick={() => window.location.reload()} variant="outline">
+                Retry
+              </Button>
+              <Button onClick={() => navigate('/my-books')} variant="default">
+                Return to My Books
+              </Button>
             </div>
-          )}
+          </div>
         </main>
-        {configModal}
+      </div>
+    );
+  }
+
+  if (!book) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-muted-foreground">Loading…</span>
+        </div>
       </div>
     );
   }
@@ -616,7 +718,7 @@ function Dashboard() {
         chapter={chapter}
         onChapterSelect={selectChapter}
         onLoadNewBook={resetBook}
-        onOpenConfig={() => setIsConfigOpen(true)}
+        onNavClick={navigate}
         bottomBar={
           <BottomPlayer
             audioUrl={audioUrl}

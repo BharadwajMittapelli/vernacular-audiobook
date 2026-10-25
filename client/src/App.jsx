@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from './context/AuthContext.jsx';
+import { NavigateContext } from './context/NavigateContext.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import MyBooks from './pages/MyBooks.jsx';
 
 function App() {
   const { session, loading } = useAuth();
   const [path, setPath] = useState(window.location.pathname);
-  // ref, not state — avoids render-phase state update
-  const redirectingRef = useRef(false);
 
   const navigate = (newPath) => {
     window.history.pushState({}, '', newPath);
@@ -21,28 +21,21 @@ function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  // Redirect AFTER render completes — never during render.
+  // Redirect after auth state resolves:
+  // - Authenticated user on / without bookId → /my-books
+  // - Authenticated user on /login or /register → /my-books
+  // - Unauthenticated user on any non-auth page → /login
   useEffect(() => {
     if (loading) return;
-    const currentPath = window.location.pathname;
-    if (!session && currentPath !== '/login' && currentPath !== '/register' && !redirectingRef.current) {
-      redirectingRef.current = true;
-      navigate('/login');
-    } else if (session && (currentPath === '/login' || currentPath === '/register') && !redirectingRef.current) {
-      redirectingRef.current = true;
-      navigate('/');
-    } else {
-      redirectingRef.current = false;
-    }
-  }, [session, loading]);
+    const params = new URLSearchParams(window.location.search);
+    const hasBookId = params.get('bookId') !== null;
 
-  // Reset the redirect guard when the user manually navigates to auth pages,
-  // so future redirects (e.g., after logout) can still fire.
-  useEffect(() => {
-    if (path === '/login' || path === '/register') {
-      redirectingRef.current = false;
+    if (session && !hasBookId && (path === '/' || path === '/login' || path === '/register')) {
+      navigate('/my-books');
+    } else if (!session && path !== '/login' && path !== '/register') {
+      navigate('/login');
     }
-  }, [path]);
+  }, [session, loading, path, navigate]);
 
   if (loading) {
     return (
@@ -60,8 +53,18 @@ function App() {
       return <Login />;
     case '/register':
       return <Register />;
+    case '/my-books':
+      return (
+        <NavigateContext.Provider value={navigate}>
+          <MyBooks />
+        </NavigateContext.Provider>
+      );
     default:
-      return <Dashboard />;
+      return (
+        <NavigateContext.Provider value={navigate}>
+          <Dashboard />
+        </NavigateContext.Provider>
+      );
   }
 }
 
