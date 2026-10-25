@@ -8,7 +8,7 @@ import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { MainLayout } from '../components/layout/MainLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
-import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails } from '../services/api.js';
+import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
@@ -157,6 +157,8 @@ function Dashboard() {
   const initializedFromUrlRef = React.useRef(false);
   const [isLoadingBook, setIsLoadingBook] = React.useState(false);
   const currentBookIdRef = React.useRef(null);
+  const [bookStatus, setBookStatus] = React.useState(null);
+  const pollIntervalRef = React.useRef(null);
 
   // Initialize from ?bookId query parameter on mount
   React.useEffect(() => {
@@ -227,6 +229,39 @@ function Dashboard() {
 
     return () => { cancelled = true; };
   }, []);
+
+  // Poll for synthesis progress
+  React.useEffect(() => {
+    if (!book || book.status !== 'processing') return;
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await getBookStatus(book.id);
+        if (!res?.success) return;
+
+        setBookStatus(res);
+
+        setBook((b) => ({
+          ...b,
+          status: res.book.status,
+          completed_chapters: res.book.completed_chapters,
+          chapters: b.chapters.map((ch) => {
+            const updated = res.chapters?.find((c) => c.id === ch.chapterId || c.id === ch.id);
+            return updated ? { ...ch, status: updated.status } : ch;
+          }),
+        }));
+      } catch {
+        // Transient network error — silently ignore
+      }
+    }, 5000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [book?.id, book?.status]);
 
   const chapter = book ? book.chapters[activeIdx] : null;
   const alignment = audioResult?.alignment || [];
@@ -319,6 +354,8 @@ function Dashboard() {
   const generateAll = async () => {
     setIsBulk(true);
     setError(null);
+    // Optimistically mark processing so the poll loop kicks in immediately
+    setBook((b) => ({ ...b, status: 'processing' }));
     try {
       const res = await synthesizeAsync({
         chapters: book.chapters.map((ch) => ({
@@ -500,6 +537,13 @@ function Dashboard() {
           {/* Reading content */}
           <div className="flex-1 overflow-y-auto px-8 py-3 scrollbar-thin">
             {error && <ErrorBanner>{error}</ErrorBanner>}
+            {book?.status === 'processing' && (
+              <div className="mb-4 rounded-lg p-3 bg-amber-500/10 border border-amber-500/20 text-amber-700 text-sm">
+                Processing Audio:{' '}
+                {bookStatus?.book?.completed_chapters ?? book?.completed_chapters ?? 0} of{' '}
+                {bookStatus?.book?.total_chapters ?? book?.total_chapters ?? book?.chapters?.length ?? 0} chapters done
+              </div>
+            )}
             {bulkStatus && (
               <div className="mb-4 rounded-lg p-3 bg-terracotta/10 border border-terracotta/20 text-terracotta text-sm">
                 {bulkStatus}

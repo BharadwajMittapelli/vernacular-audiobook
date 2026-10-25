@@ -34,7 +34,7 @@ router.get('/', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('books')
-      .select('id, title, cover_url, total_chapters, completed_chapters, status, created_at')
+      .select('id, title, cover_url, total_chapters, completed_chapters, status, created_at, last_opened_at, language')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
 
@@ -286,14 +286,14 @@ router.post('/:bookId/synthesize-all', bulkLimiter, async (req, res) => {
   }
 });
 
-// GET /:bookId — book details + ordered chapters
-router.get('/:bookId', async (req, res) => {
+// GET /:bookId/status — lightweight progress snapshot
+router.get('/:bookId/status', async (req, res) => {
   try {
     const { bookId } = req.params;
 
     const { data: book, error: bookError } = await supabase
       .from('books')
-      .select('id, title, cover_url, total_chapters, completed_chapters, status, created_at')
+      .select('id, status, completed_chapters, total_chapters')
       .eq('id', bookId)
       .eq('user_id', req.user.id)
       .single();
@@ -301,6 +301,180 @@ router.get('/:bookId', async (req, res) => {
     if (bookError || !book) {
       return res.status(404).json({ success: false, error: 'Book not found' });
     }
+
+    const { data: chapters, error: chaptersError } = await supabase
+      .from('chapters')
+      .select('id, status')
+      .eq('book_id', bookId)
+      .order('sequence_number', { ascending: true });
+
+    if (chaptersError) throw chaptersError;
+
+    res.json({
+      success: true,
+      book: {
+        status: book.status,
+        completed_chapters: book.completed_chapters,
+        total_chapters: book.total_chapters,
+      },
+      chapters: (chapters || []).map((c) => ({ id: c.id, status: c.status })),
+    });
+  } catch (error) {
+    console.error('GET /studio/:bookId/status error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /:bookId/export-mp3 — merged single-file MP3 export (rate-limited)
+const exportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 2,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip,
+  message: { success: false, error: 'Too many exports, please try again later' },
+});
+
+router.get('/:bookId/export-mp3', exportLimiter, async (req, res) => {
+  try {
+    const { bookId } = req.params;
+
+    const { data: book, error: bookError } = await supabase
+      .from('books')
+      .select('id, title, status, total_chapters')
+      .eq('id', bookId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (bookError || !book) {
+      return res.status(404).json({ success: false, error: 'Book not found' });
+    }
+    if (book.status !== 'completed') {
+      return res.status(400).json({ success: false, error: 'Book is not yet completed' });
+    }
+
+    const { data: chapters, error: chaptersError } = await supabase
+      .from('chapters')
+      .select('id, sequence_number, status')
+      .eq('book_id', bookId)
+      .eq('status', 'completed')
+      .order('sequence_number', { ascending: true });
+
+    if (chaptersError) throw chaptersError;
+    if (!chapters || chapters.length === 0) {
+      return res.status(400).json({ success: false, error: 'No completed chapters found' });
+    }
+    if (chapters.length !== book.total_chapters) {
+      return res.status(400).json({
+        success: false,
+        error: `Not all chapters have audio yet (${chapters.length}/${book.total_chapters})`,
+      });
+    }
+
+    const chapterIds = chapters.map((c) => c.id);
+    const { data: generations, error: genError } = await supabase
+      .from('audio_generations')
+      .select('chapter_uuid, audio_url, audio_path, duration, alignment, created_at')
+      .in('chapter_uuid', chapterIds)
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false });
+
+    if (genError) throw genError;
+
+    const latestByChapter = new Map();
+    for (const gen of generations || []) {
+      if (gen.chapter_uuid && !latestByChapter.has(gen.chapter_uuid)) {
+        latestByChapter.set(gen.chapter_uuid, gen);
+      }
+    }
+
+    const urls = [];
+    for (const ch of chapters) {
+      const gen = latestByChapter.get(ch.id);
+      if (!gen) {
+        return res.status(400).json({
+          success: false,
+          error: `Chapter "${ch.sequence_number}" has no completed audio generation`,
+        });
+      }
+      const url = await resolveAudioUrl(gen);
+      if (!url) {
+        return res.status(400).json({
+          success: false,
+          error: `Chapter "${ch.sequence_number}" audio URL missing`,
+        });
+      }
+      urls.push(url);
+    }
+
+    // ponytail: fluent-ffmpeg streaming directly from signed URLs — no temp files.
+    // Ceiling: long books may exceed host proxy timeouts; upgrade to worker queue if needed.
+    const ffmpeg = (await import('fluent-ffmpeg')).default;
+    const ffmpegPath = (await import('ffmpeg-static')).default;
+    ffmpeg.setFfmpegPath(ffmpegPath);
+    ffmpeg.setFfprobePath(ffmpegPath);
+
+    const safeFilename = (book.title || 'audiobook')
+      .replace(/[\\/:*?"<>|]/g, '')
+      .trim() || 'audiobook';
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.mp3"`);
+    res.setHeader('Cache-Control', 'no-store');
+
+    req.on('close', () => {
+      ffmpegProcess.kill('SIGTERM');
+    });
+
+    const ffmpegProcess = ffmpeg();
+    for (const url of urls) {
+      ffmpegProcess.input(url);
+    }
+    ffmpegProcess
+      .on('error', (err) => {
+        console.error('[MP3 Export] ffmpeg error:', err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, error: 'Failed to merge audio' });
+        }
+      })
+      .on('end', () => {
+        console.log(`[MP3 Export] Done: ${safeFilename}.mp3`);
+      })
+      .outputFormat('mp3')
+      .saveToStream(res, { end: true });
+  } catch (error) {
+    console.error('GET /studio/:bookId/export-mp3 error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  }
+});
+
+// GET /:bookId — book details + ordered chapters
+router.get('/:bookId', async (req, res) => {
+  try {
+    const { bookId } = req.params;
+
+    const { data: book, error: bookError } = await supabase
+      .from('books')
+      .select('id, title, cover_url, total_chapters, completed_chapters, status, created_at, last_opened_at, language')
+      .eq('id', bookId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (bookError || !book) {
+      return res.status(404).json({ success: false, error: 'Book not found' });
+    }
+
+    // Fire-and-forget: update last_opened_at without blocking the response
+    supabase
+      .from('books')
+      .update({ last_opened_at: new Date().toISOString() })
+      .eq('id', bookId)
+      .eq('user_id', req.user.id)
+      .then(({ error }) => {
+        if (error) console.error('Failed to update last_opened_at', error);
+      });
 
     const { data: chapters, error: chaptersError } = await supabase
       .from('chapters')

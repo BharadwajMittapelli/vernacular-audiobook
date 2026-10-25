@@ -129,7 +129,14 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
               Chapters
             </p>
             <div className="space-y-0.5 max-h-48 overflow-y-auto scrollbar-thin">
-              {book.chapters.map((ch, i) => (
+              {book.chapters.map((ch, i) => {
+                const dotColor = {
+                  completed: 'bg-green-500',
+                  processing: 'bg-yellow-500 animate-pulse',
+                  failed: 'bg-red-500',
+                  pending: 'bg-gray-300',
+                }[ch.status] ?? 'bg-gray-300';
+                return (
                 <button
                   key={ch.chapterId}
                   onClick={() => onChapterSelect?.(i)}
@@ -145,12 +152,14 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
                   <span className="text-xs text-muted-foreground shrink-0 mr-1.5 font-mono">
                     {String(i + 1).padStart(2, '0')}
                   </span>
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
                   <span className="truncate flex-1">{ch.title}</span>
                   <span className="text-xs text-muted-foreground shrink-0 ml-1">
                     {estimateMinutes(ch)}m
                   </span>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

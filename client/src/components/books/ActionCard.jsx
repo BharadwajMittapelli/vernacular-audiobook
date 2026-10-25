@@ -1,10 +1,10 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
 
-export function ActionCard({ icon, title, description, onClick, disabled = false }) {
+export function ActionCard({ icon, title, description, onClick, onShare, disabled = false }) {
   return (
     <button
-      onClick={onClick}
+      onClick={onClick ?? onShare}
       disabled={disabled}
       className={`
         w-full text-left rounded-xl border border-border bg-card p-5

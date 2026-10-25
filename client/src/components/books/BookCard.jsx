@@ -1,5 +1,6 @@
 import React from 'react';
-import { MoreHorizontal, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Trash2, Download } from 'lucide-react';
+import { exportBookMp3 } from '../../services/api.js';
 
 function getStatusColor(status) {
   switch (status) {
@@ -19,8 +20,31 @@ function getStatusLabel(status) {
   }
 }
 
-export function BookCard({ book, onOpen, onDelete }) {
+export function BookCard({ book, onOpen, onDelete, onShare }) {
+  const [downloading, setDownloading] = React.useState(false);
   const initials = (book.title || '').slice(0, 2).toUpperCase();
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await exportBookMp3(book.id);
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      const contentDisp = res.headers['content-disposition'] || '';
+      const match = contentDisp.match(/filename\*?=['"]?(?:UTF-8'')?([^"';\s]+)['"]?/);
+      const filename = match ? decodeURIComponent(match[1]) : `${book.title || 'audiobook'}.mp3`;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (err) {
+      console.error('[BookCard] Export failed:', err);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="group relative bg-card border border-border rounded-xl overflow-hidden hover:shadow-md transition-shadow">
@@ -41,13 +65,21 @@ export function BookCard({ book, onOpen, onDelete }) {
             {getStatusLabel(book.status)}
           </span>
         </div>
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100 gap-2 px-4">
           <button
             onClick={onOpen}
             className="bg-background text-foreground px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted transition-colors"
           >
             Open
           </button>
+          {onShare && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onShare(); }}
+              className="bg-terracotta text-background px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-colors"
+            >
+              Share
+            </button>
+          )}
         </div>
       </div>
       <div className="p-3">
@@ -64,16 +96,33 @@ export function BookCard({ book, onOpen, onDelete }) {
           >
             Open
           </button>
-          {onDelete && (
-            <button
-              onClick={onDelete}
-              className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
-              aria-label="Delete book"
-              title="Delete book"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                aria-label="Delete book"
+                title="Delete book"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {book.status === 'completed' && (
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                aria-label="Download MP3"
+                title="Download MP3"
+              >
+                {downloading ? (
+                  <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin block" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

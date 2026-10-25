@@ -11,6 +11,7 @@ import { BookCard } from '../components/books/BookCard.jsx';
 import { RecentlyOpenedCard } from '../components/books/RecentlyOpenedCard.jsx';
 import { BookEmptyState } from '../components/books/BookEmptyState.jsx';
 import { FeatureCards } from '../components/books/FeatureCards.jsx';
+import { ShareDialog } from '../components/books/ShareDialog.jsx';
 
 const TABS = ['bookshelf', 'recent', 'shared', 'favorites'];
 const BOOKSHELF_LIMIT = 5;
@@ -40,6 +41,7 @@ export default function MyBooks() {
   const [showUploader, setShowUploader] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [uploadError, setUploadError] = useState(null);
+  const [shareBook, setShareBook] = useState(null);
 
   const fetchBooks = useCallback(async () => {
     setLoading(true);
@@ -118,6 +120,11 @@ export default function MyBooks() {
   const bookshelfBooks = sortedBooks.filter((b) => bookshelfIds.has(b.id));
   const recentBooksFull = sortedBooks.filter((b) => !bookshelfIds.has(b.id));
 
+  const recentlyOpened = [...books]
+    .filter(b => b.last_opened_at)
+    .sort((a, b) => new Date(b.last_opened_at) - new Date(a.last_opened_at))
+    .slice(0, 5);
+
   // Search is applied AFTER the bookshelf/recent split
   const searchLower = searchQuery.toLowerCase();
   const bookshelfFiltered = bookshelfBooks.filter((book) =>
@@ -171,7 +178,11 @@ export default function MyBooks() {
                 icon={<Upload className="h-6 w-6" />}
                 title="Publish to Ekithab Reader"
                 description="Share your audiobook with listeners and make it accessible everywhere."
-                disabled
+                disabled={books.length === 0}
+                onShare={() => {
+                  const target = books.find((b) => b.status === 'completed') || books[0];
+                  if (target) setShareBook(target);
+                }}
               />
             </div>
 
@@ -214,15 +225,6 @@ export default function MyBooks() {
                   className="w-full pl-9 pr-4 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
                 />
               </div>
-              <select className="px-3 py-2 rounded-lg border border-border bg-background text-sm text-muted-foreground cursor-not-allowed opacity-60" disabled>
-                <option>All books</option>
-              </select>
-              <select className="px-3 py-2 rounded-lg border border-border bg-background text-sm text-muted-foreground cursor-not-allowed opacity-60" disabled>
-                <option>All languages</option>
-              </select>
-              <select className="px-3 py-2 rounded-lg border border-border bg-background text-sm text-muted-foreground cursor-not-allowed opacity-60" disabled>
-                <option>Last updated</option>
-              </select>
               <div className="flex items-center border border-border rounded-lg overflow-hidden">
                 <button
                   onClick={() => setViewMode('grid')}
@@ -283,12 +285,13 @@ export default function MyBooks() {
             ) : viewMode === 'grid' ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
                 {displayBooks.map((book) => (
-                  <BookCard
-                    key={book.id}
-                    book={book}
-                    onOpen={() => navigate(`/?bookId=${book.id}`)}
-                    onDelete={() => handleDelete(book.id)}
-                  />
+                   <BookCard
+                     key={book.id}
+                     book={book}
+                     onOpen={() => navigate(`/?bookId=${book.id}`)}
+                     onDelete={() => handleDelete(book.id)}
+                     onShare={() => setShareBook(book)}
+                   />
                 ))}
               </div>
             ) : (
@@ -313,10 +316,16 @@ export default function MyBooks() {
                       </p>
                     </div>
                     <button
-                      onClick={() => console.log('[MyBooks] Open book:', book.id)}
+                      onClick={() => navigate(`/?bookId=${book.id}`)}
                       className="shrink-0 bg-foreground text-background text-xs font-medium px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
                     >
                       Open
+                    </button>
+                    <button
+                      onClick={() => setShareBook(book)}
+                      className="shrink-0 border border-border text-xs font-medium px-4 py-2 rounded-lg hover:bg-muted transition-colors"
+                    >
+                      Share
                     </button>
                     <button
                       onClick={() => handleDelete(book.id)}
@@ -335,7 +344,7 @@ export default function MyBooks() {
             <FeatureCards />
 
             {/* Recently opened — only when books exist and on bookshelf/recent tabs */}
-            {(activeTab === 'bookshelf' || activeTab === 'recent') && books.length > 0 && (
+            {(activeTab === 'bookshelf' || activeTab === 'recent') && recentlyOpened.length > 0 && (
               <div className="mb-8">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-foreground">Recently opened</h2>
@@ -344,13 +353,10 @@ export default function MyBooks() {
                   </button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {books.slice(0, 4).map((book) => (
+                  {recentlyOpened.map((book) => (
                     <RecentlyOpenedCard
                       key={book.id}
-                      book={{
-                        ...book,
-                        lastOpened: book.created_at,
-                      }}
+                      book={book}
                       onOpen={() => navigate(`/?bookId=${book.id}`)}
                     />
                   ))}
@@ -387,6 +393,13 @@ export default function MyBooks() {
           </div>
         </div>
       )}
+
+      <ShareDialog
+        isOpen={!!shareBook}
+        bookId={shareBook?.id}
+        bookTitle={shareBook?.title}
+        onClose={() => setShareBook(null)}
+      />
     </div>
   );
 }

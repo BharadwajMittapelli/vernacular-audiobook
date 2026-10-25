@@ -5,6 +5,7 @@ import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import MyBooks from './pages/MyBooks.jsx';
+import PublicListener from './pages/PublicListener.jsx';
 
 function App() {
   const { session, loading } = useAuth();
@@ -27,6 +28,7 @@ function App() {
   // - Unauthenticated user on any non-auth page → /login
   useEffect(() => {
     if (loading) return;
+    if (path.startsWith('/listen/')) return; // public share links bypass auth
     const params = new URLSearchParams(window.location.search);
     const hasBookId = params.get('bookId') !== null;
 
@@ -36,6 +38,17 @@ function App() {
       navigate('/login');
     }
   }, [session, loading, path, navigate]);
+
+  // Public listener route: render before the auth spinner so logged-out
+  // visitors with a share link reach the reader directly.
+  if (path.startsWith('/listen/')) {
+    const bookId = path.slice('/listen/'.length).split('/')[0];
+    return (
+      <NavigateContext.Provider value={navigate}>
+        <PublicListener bookId={bookId} />
+      </NavigateContext.Provider>
+    );
+  }
 
   if (loading) {
     return (

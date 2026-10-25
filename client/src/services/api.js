@@ -72,12 +72,24 @@ export function getEmbedData(generationId) {
   return api.get(`/api/storefront/embed/${generationId}`).then((res) => res.data);
 }
 
+export function getPublicBook(bookId) {
+  return api.get(`/api/storefront/book/${bookId}`).then((res) => res.data);
+}
+
+export function exportBookMp3(bookId) {
+  return api.get(`/api/studio/${bookId}/export-mp3`, { responseType: 'blob' });
+}
+
 export function getBooks() {
   return api.get('/api/studio').then((res) => res.data);
 }
 
 export function getBookDetails(bookId) {
   return api.get(`/api/studio/${bookId}`).then((res) => res.data);
+}
+
+export function getBookStatus(bookId) {
+  return api.get(`/api/studio/${bookId}/status`).then((res) => res.data);
 }
 
 export function createBook({ title, chapters }) {
