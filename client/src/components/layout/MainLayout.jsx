@@ -9,6 +9,7 @@ export function MainLayout({
   onChapterSelect,
   onNavClick,
   onLoadNewBook,
+  activePath,
   children,
   bottomBar,
 }) {
@@ -24,6 +25,7 @@ export function MainLayout({
           setMobileMenuOpen(false);
         }}
         onNavClick={onNavClick}
+        activePath={activePath}
         isMobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
       />

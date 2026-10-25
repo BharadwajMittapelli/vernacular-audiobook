@@ -140,6 +140,7 @@ function ChapterInfoView({ chapter, estimatedCredits, readingMinutes, wordCount,
 function Dashboard() {
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const activePath = window.location.pathname;
   const [book, setBook] = React.useState(null);
   const [activeIdx, setActiveIdx] = React.useState(0);
   const [isConfigOpen, setIsConfigOpen] = React.useState(false);
@@ -718,6 +719,7 @@ function Dashboard() {
         onChapterSelect={selectChapter}
         onLoadNewBook={resetBook}
         onNavClick={navigate}
+        activePath={activePath}
         bottomBar={
           <BottomPlayer
             audioUrl={audioUrl}

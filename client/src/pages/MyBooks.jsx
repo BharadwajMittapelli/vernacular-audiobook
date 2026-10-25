@@ -127,9 +127,7 @@ export default function MyBooks() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <MyBooksSidebar activeItem="my-books" onNavClick={(href) => {
-        if (href && href !== '#') window.history.pushState({}, '', href);
-      }} />
+      <MyBooksSidebar activeItem="my-books" onNavClick={navigate} activePath={window.location.pathname} />
 
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <MyBooksTopBar onUploadBook={handleUpload} onLogout={() => signOut()} />

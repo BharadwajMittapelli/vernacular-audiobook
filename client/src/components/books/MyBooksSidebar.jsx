@@ -9,7 +9,7 @@ const NAV_ITEMS = [
   { label: 'Settings', icon: Settings, href: '#' },
 ];
 
-export function MyBooksSidebar({ activeItem = 'my-books', onNavClick }) {
+export function MyBooksSidebar({ activeItem = 'my-books', onNavClick, activePath }) {
   const { session, signOut } = useAuth();
   const user = session?.user;
   const avatarUrl = user?.user_metadata?.avatar_url || null;
@@ -38,7 +38,7 @@ export function MyBooksSidebar({ activeItem = 'my-books', onNavClick }) {
       <nav className="flex-1 px-3 py-4 space-y-1">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const isActive = activeItem === item.label.toLowerCase().replace(' ', '-');
+          const isActive = activePath === item.href || activeItem === item.label.toLowerCase().replace(' ', '-');
           const isExternal = item.href === '#';
           return (
             <button

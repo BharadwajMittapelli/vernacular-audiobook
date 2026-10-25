@@ -16,7 +16,7 @@ function estimateMinutes(ch) {
   return Math.ceil(words / 160);
 }
 
-export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, isMobileOpen, onCloseMobile }) {
+export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, isMobileOpen, onCloseMobile, activePath }) {
   const { session } = useAuth();
   const user = session?.user;
   const avatarUrl = user?.user_metadata?.avatar_url || null;
@@ -71,6 +71,7 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
         {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isRoute = item.route && item.route !== '#';
+            const isActive = isRoute && activePath === item.route;
             return (
               <button
                 key={item.label}
@@ -79,12 +80,14 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
                 className={`
                   w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
                   transition-colors
-                  ${isRoute
-                    ? 'text-foreground hover:bg-muted'
-                    : 'text-muted-foreground opacity-60 cursor-not-allowed'
+                  ${isActive
+                    ? 'bg-terracotta/10 text-terracotta font-medium'
+                    : isRoute
+                      ? 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      : 'text-muted-foreground opacity-60 cursor-not-allowed'
                   }
                 `}
-                aria-current={item.label === 'Studio' ? 'page' : undefined}
+                aria-current={isActive ? 'page' : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span>{item.label}</span>
