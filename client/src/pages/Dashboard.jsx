@@ -13,7 +13,7 @@ import { useNavigate } from '../context/NavigateContext.jsx';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
 import { Button } from '../components/ui/button.jsx';
-import { Zap, FileText, BookOpen, Info, Download } from 'lucide-react';
+import { Zap, FileText, BookOpen, Info, Download, ChevronDown } from 'lucide-react';
 
 const LABELS = {
   'en-IN': 'English',
@@ -284,10 +284,6 @@ function Dashboard() {
     }));
   };
 
-  const resetBook = () => {
-    navigate('/my-books');
-  };
-
   const handleGenerate = async (config) => {
     if (config?.language) setSelectedLanguage(config.language);
     if (config?.voiceProfile) setSelectedVoice(config.voiceProfile);
@@ -409,6 +405,14 @@ function Dashboard() {
     } else {
       player.seek(Math.min(player.duration, player.currentTime + 15));
     }
+  };
+  const onRewind10 = () => {
+    if (!player.duration) return;
+    player.seek(Math.max(0, player.currentTime - 10));
+  };
+  const onForward10 = () => {
+    if (!player.duration) return;
+    player.seek(Math.min(player.duration, player.currentTime + 10));
   };
 
   const configModal = (
@@ -554,28 +558,26 @@ function Dashboard() {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
                 Language
               </p>
-              <select
-                value={selectedLanguage}
-                onChange={(e) => setSelectedLanguage(e.target.value)}
-                className="w-full appearance-none bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground pr-8 focus:outline-none focus:ring-2 focus:ring-terracotta/40 cursor-pointer"
-              >
-                {Object.entries(LABELS).map(([code, label]) => (
-                  <option key={code} value={code}>{label}</option>
-                ))}
-              </select>
+              <div className="relative">
+                <select
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  className="w-full appearance-none bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground pr-8 focus:outline-none focus:ring-2 focus:ring-terracotta/40 cursor-pointer"
+                >
+                  {Object.entries(LABELS).map(([code, label]) => (
+                    <option key={code} value={code}>{label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              </div>
             </div>
 
             {/* Voice cards */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Voice
-                </p>
-                <button className="text-xs text-terracotta font-medium hover:underline">
-                  View all →
-                </button>
-              </div>
-              <div className="space-y-2 max-h-[220px] overflow-y-auto scrollbar-thin">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Voice
+              </p>
+              <div className="w-full space-y-2 max-h-[220px] overflow-y-auto scrollbar-thin">
                 <VoiceSelector
                   language={selectedLanguage}
                   selectedVoice={selectedVoice}
@@ -633,7 +635,7 @@ function Dashboard() {
                 })
               }
               disabled={isGenerating || !selectedVoice || !chapter}
-              className="w-full bg-foreground text-background rounded-lg py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
+              className="w-full bg-foreground text-background rounded-lg py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-opacity flex items-center justify-center gap-2"
             >
               {isGenerating ? (
                 <>
@@ -653,7 +655,7 @@ function Dashboard() {
               onClick={handleExport}
               disabled={!audioUrl || isExporting}
               title="Downloads transcript and audio for this chapter"
-              className="w-full border border-border rounded-lg py-3 text-sm font-semibold hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="w-full border border-border rounded-lg py-3 text-sm font-semibold hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors flex items-center justify-center gap-2"
             >
               {isExporting ? (
                 <>
@@ -731,7 +733,6 @@ function Dashboard() {
         activeChapterIdx={activeIdx}
         chapter={chapter}
         onChapterSelect={selectChapter}
-        onLoadNewBook={resetBook}
         onNavClick={navigate}
         activePath={activePath}
         bottomBar={
@@ -746,8 +747,8 @@ function Dashboard() {
             bookCoverUrl={book?.coverUrl}
             onPlay={onPlay}
             onPause={onPause}
-            onRewind={onRewind}
-            onForward={onForward}
+            onRewind10={onRewind10}
+            onForward10={onForward10}
             onSeek={(seconds) => player.seek(seconds)}
             onRateChange={(rate) => { setSpeed(rate); player.setPlaybackRate(rate); }}
           />

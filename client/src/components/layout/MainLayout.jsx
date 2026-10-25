@@ -8,7 +8,6 @@ export function MainLayout({
   chapter,
   onChapterSelect,
   onNavClick,
-  onLoadNewBook,
   activePath,
   children,
   bottomBar,
@@ -32,11 +31,9 @@ export function MainLayout({
 
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <TopBar
-          book={book}
           chapter={chapter}
           activeIdx={activeChapterIdx}
           onMenuClick={() => setMobileMenuOpen(true)}
-          onLoadNewBook={onLoadNewBook}
         />
 
         <main className="flex-1 overflow-hidden">{children}</main>

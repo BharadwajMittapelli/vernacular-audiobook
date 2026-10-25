@@ -1,7 +1,43 @@
 import React from 'react';
-import { Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Play, Pause } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Slider } from '../ui/slider.jsx';
+
+function Rewind10({ className }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M3 10a9 9 0 1 1-.5 4" />
+      <polyline points="3 14 3 10 7 10" />
+      <text x="15" y="15" fontSize="8" fontWeight="bold" fill="currentColor" textAnchor="middle" dominantBaseline="middle">10</text>
+    </svg>
+  );
+}
+
+function Forward10({ className }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M21 10a9 9 0 1 1-.5 4" />
+      <polyline points="21 14 21 10 17 10" />
+      <text x="9" y="15" fontSize="8" fontWeight="bold" fill="currentColor" textAnchor="middle" dominantBaseline="middle">10</text>
+    </svg>
+  );
+}
 
 function formatTime(s) {
   if (!isFinite(s)) return '0:00';
@@ -21,8 +57,8 @@ export function BottomPlayer({
   bookCoverUrl,
   onPlay,
   onPause,
-  onRewind,
-  onForward,
+  onRewind10,
+  onForward10,
   onSeek,
   onRateChange,
 }) {
@@ -73,12 +109,12 @@ export function BottomPlayer({
         <Button
           variant="ghost"
           size="icon"
-          onClick={onRewind}
+          onClick={onRewind10}
           disabled={!hasAudio}
-          aria-label="Rewind"
-          className="rounded-full h-8 w-8"
+          aria-label="Rewind 10 seconds"
+          className="rounded-full h-8 w-8 cursor-pointer"
         >
-          <SkipBack className="h-4 w-4" />
+          <Rewind10 className="h-4 w-4" />
         </Button>
         <Button
           variant="default"
@@ -86,19 +122,19 @@ export function BottomPlayer({
           onClick={isPlaying ? onPause : onPlay}
           disabled={!hasAudio}
           aria-label={isPlaying ? 'Pause' : 'Play'}
-          className="rounded-full h-9 w-9 bg-foreground hover:bg-foreground/90 text-background"
+          className="rounded-full h-9 w-9 bg-foreground hover:bg-foreground/90 text-background cursor-pointer"
         >
           {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          onClick={onForward}
+          onClick={onForward10}
           disabled={!hasAudio}
-          aria-label="Forward"
-          className="rounded-full h-8 w-8"
+          aria-label="Forward 10 seconds"
+          className="rounded-full h-8 w-8 cursor-pointer"
         >
-          <SkipForward className="h-4 w-4" />
+          <Forward10 className="h-4 w-4" />
         </Button>
       </div>
 

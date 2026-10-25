@@ -52,10 +52,10 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 h-14 border-b border-border shrink-0">
-          <BookOpen className="h-5 w-5 text-terracotta" />
+          <BookOpen className="h-6 w-6 text-terracotta" />
           <div className="flex flex-col leading-none">
-            <span className="text-sm font-bold tracking-tight text-foreground">Ekithab AI</span>
-            <span className="text-xs text-muted-foreground font-medium">Audiobook</span>
+            <span className="text-base font-bold tracking-tight text-foreground">Ekithab AI</span>
+            <span className="text-sm text-muted-foreground font-medium">Audiobook</span>
           </div>
           <button
             className="ml-auto lg:hidden p-1 rounded-md hover:bg-elevated"
