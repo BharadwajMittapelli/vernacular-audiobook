@@ -13,6 +13,7 @@ import { BookEmptyState } from '../components/books/BookEmptyState.jsx';
 import { FeatureCards } from '../components/books/FeatureCards.jsx';
 
 const TABS = ['bookshelf', 'recent', 'shared', 'favorites'];
+const BOOKSHELF_LIMIT = 5;
 
 function formatRelativeTime(dateStr) {
   if (!dateStr) return '';
@@ -108,19 +109,35 @@ export default function MyBooks() {
     book.title?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const recentBooks = activeTab === 'recent' ? filteredBooks : [];
+  // Compute bookshelf/recent sets from full sorted collection
+  // Backend returns books ordered by created_at DESC, preserve that order
+  const sortedBooks = [...books].sort((a, b) => {
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+  const bookshelfIds = new Set(sortedBooks.slice(0, BOOKSHELF_LIMIT).map((b) => b.id));
+  const bookshelfBooks = sortedBooks.filter((b) => bookshelfIds.has(b.id));
+  const recentBooksFull = sortedBooks.filter((b) => !bookshelfIds.has(b.id));
+
+  // Search is applied AFTER the bookshelf/recent split
+  const searchLower = searchQuery.toLowerCase();
+  const bookshelfFiltered = bookshelfBooks.filter((book) =>
+    book.title?.toLowerCase().includes(searchLower)
+  );
+  const recentFiltered = recentBooksFull.filter((book) =>
+    book.title?.toLowerCase().includes(searchLower)
+  );
   const sharedBooks = activeTab === 'shared' ? [] : filteredBooks;
   const favoritesBooks = activeTab === 'favorites' ? [] : filteredBooks;
 
   const displayBooks =
-    activeTab === 'bookshelf' ? filteredBooks :
-    activeTab === 'recent' ? recentBooks :
+    activeTab === 'bookshelf' ? bookshelfFiltered :
+    activeTab === 'recent' ? recentFiltered :
     activeTab === 'shared' ? sharedBooks :
     favoritesBooks;
 
   const tabsWithCounts = [
-    { key: 'bookshelf', label: 'Bookshelf' },
-    { key: 'recent', label: 'Recent', count: books.length },
+    { key: 'bookshelf', label: 'Bookshelf', count: bookshelfBooks.length },
+    { key: 'recent', label: 'Recent', count: recentBooksFull.length },
     { key: 'shared', label: 'Shared', badge: 'Coming soon' },
     { key: 'favorites', label: 'Favorites', badge: 'Coming soon' },
   ];
