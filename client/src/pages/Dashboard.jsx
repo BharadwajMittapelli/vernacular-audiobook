@@ -156,6 +156,7 @@ function Dashboard() {
   const [isExporting, setIsExporting] = React.useState(false);
   const initializedFromUrlRef = React.useRef(false);
   const [isLoadingBook, setIsLoadingBook] = React.useState(false);
+  const currentBookIdRef = React.useRef(null);
 
   // Initialize from ?bookId query parameter on mount
   React.useEffect(() => {
@@ -168,6 +169,7 @@ function Dashboard() {
 
     let cancelled = false;
     setIsLoadingBook(true);
+    currentBookIdRef.current = bookId;
     (async () => {
       try {
         const res = await getBookDetails(bookId);
@@ -205,10 +207,7 @@ function Dashboard() {
         setBulkStatus(null);
         setError(null);
         initializedFromUrlRef.current = true;
-        // Clean URL
-        const url = new URL(window.location.href);
-        url.searchParams.delete('bookId');
-        window.history.replaceState({}, '', url.toString());
+        sessionStorage.setItem('lastBookId', bookId);
         // Load audio for first chapter
         if (chaptersWithText[0]) loadChapterAudio(chaptersWithText[0]);
       } catch (err) {
@@ -217,13 +216,12 @@ function Dashboard() {
         const status = err.response?.status;
         if (status === 404) {
           setError('Book not found. It may have been deleted.');
+          if (currentBookIdRef.current === bookId) {
+            sessionStorage.removeItem('lastBookId');
+          }
         } else {
           setError(err.response?.data?.error || err.message || 'Failed to load book');
         }
-        // Clean URL on failure
-        const url = new URL(window.location.href);
-        url.searchParams.delete('bookId');
-        window.history.replaceState({}, '', url.toString());
       }
     })();
 

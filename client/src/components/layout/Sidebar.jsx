@@ -75,7 +75,24 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
             return (
               <button
                 key={item.label}
-                onClick={() => isRoute && onNavClick?.(item.route)}
+                onClick={() => {
+                  if (!isRoute) return;
+                  if (item.route === '/') {
+                    const params = new URLSearchParams(window.location.search);
+                    const urlBookId = params.get('bookId');
+                    if (urlBookId) {
+                      return;
+                    }
+                    const remembered = sessionStorage.getItem('lastBookId');
+                    if (remembered) {
+                      onNavClick?.('/?bookId=' + remembered);
+                    } else {
+                      onNavClick?.('/my-books');
+                    }
+                    return;
+                  }
+                  onNavClick?.(item.route);
+                }}
                 disabled={!isRoute}
                 className={`
                   w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
