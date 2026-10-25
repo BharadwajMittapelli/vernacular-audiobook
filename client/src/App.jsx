@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext.jsx';
 import { NavigateContext } from './context/NavigateContext.jsx';
 import Login from './pages/Login.jsx';
@@ -10,10 +10,10 @@ function App() {
   const { session, loading } = useAuth();
   const [path, setPath] = useState(window.location.pathname);
 
-  const navigate = (newPath) => {
+  const navigate = useCallback((newPath) => {
     window.history.pushState({}, '', newPath);
     setPath(newPath);
-  };
+  }, []);
 
   useEffect(() => {
     const onPop = () => setPath(window.location.pathname);

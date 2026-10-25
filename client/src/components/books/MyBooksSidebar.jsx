@@ -43,7 +43,18 @@ export function MyBooksSidebar({ activeItem = 'my-books', onNavClick, activePath
           return (
             <button
               key={item.label}
-              onClick={() => !isExternal && onNavClick?.(item.href)}
+              onClick={() => {
+                if (isExternal) return;
+                if (item.href === '/') {
+                  const remembered = sessionStorage.getItem('lastBookId');
+                  if (remembered) {
+                    onNavClick?.('/?bookId=' + remembered);
+                    return;
+                  }
+                  return;
+                }
+                onNavClick?.(item.href);
+              }}
               disabled={isExternal}
               className={`
                 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
