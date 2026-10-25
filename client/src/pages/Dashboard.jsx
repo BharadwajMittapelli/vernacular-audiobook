@@ -10,7 +10,6 @@ import { MainLayout } from '../components/layout/MainLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
 import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
-import { cleanOcrText } from '../services/textNormalizer.js';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
 import { Button } from '../components/ui/button.jsx';
