@@ -6,8 +6,8 @@ import { useAuth } from '../../context/AuthContext.jsx';
 const NAV_ITEMS = [
   { label: 'Studio', icon: Mic, route: '/' },
   { label: 'My Books', icon: BookOpen, route: '/my-books' },
-  { label: 'Audio Library', icon: Library, route: '#', active: false },
-  { label: 'Settings', icon: Settings, route: '#', active: false },
+  { label: 'Audio Library', icon: Library, route: '#' },
+  { label: 'Settings', icon: Settings, route: '/settings' },
 ];
 
 function estimateMinutes(ch) {

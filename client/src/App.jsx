@@ -6,6 +6,8 @@ import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import MyBooks from './pages/MyBooks.jsx';
 import PublicListener from './pages/PublicListener.jsx';
+import Settings from './pages/Settings.jsx';
+import UpdatePassword from './pages/UpdatePassword.jsx';
 
 function App() {
   const { session, loading } = useAuth();
@@ -70,6 +72,18 @@ function App() {
       return (
         <NavigateContext.Provider value={navigate}>
           <MyBooks />
+        </NavigateContext.Provider>
+      );
+    case '/update-password':
+      return (
+        <NavigateContext.Provider value={navigate}>
+          <UpdatePassword />
+        </NavigateContext.Provider>
+      );
+    case '/settings':
+      return (
+        <NavigateContext.Provider value={navigate}>
+          <Settings />
         </NavigateContext.Provider>
       );
     default:

@@ -6,7 +6,7 @@ const NAV_ITEMS = [
   { label: 'Studio', icon: Mic, href: '/' },
   { label: 'My Books', icon: BookOpen, href: '/my-books' },
   { label: 'Audio Library', icon: Library, href: '#' },
-  { label: 'Settings', icon: Settings, href: '#' },
+  { label: 'Settings', icon: Settings, href: '/settings' },
 ];
 
 export function MyBooksSidebar({ activeItem = 'my-books', onNavClick, activePath }) {
