@@ -24,30 +24,32 @@ export function MyBooksTopBar({ onUploadBook, onLogout }) {
         />
       </div>
 
-      <button
-        onClick={onUploadBook}
-        className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-terracotta text-background text-sm font-medium hover:opacity-90 transition-opacity shrink-0"
-      >
-        <Upload className="h-4 w-4" />
-        Upload a Book
-      </button>
+      <div className="ml-auto flex items-center gap-2 shrink-0">
+        <button
+          onClick={onUploadBook}
+          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-terracotta text-background text-sm font-medium hover:opacity-90 transition-opacity shrink-0"
+        >
+          <Upload className="h-4 w-4" />
+          Upload a Book
+        </button>
 
-      <button
-        className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
-        aria-label="Notifications"
-        title="Notifications"
-      >
-        <Bell className="h-5 w-5" />
-      </button>
+        <button
+          className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          aria-label="Notifications"
+          title="Notifications"
+        >
+          <Bell className="h-5 w-5" />
+        </button>
 
-      <button
-        onClick={onLogout}
-        className="h-8 w-8 rounded-full bg-terracotta text-terracotta-foreground hover:opacity-90 text-xs font-semibold flex items-center justify-center shrink-0 transition-opacity"
-        aria-label="Sign out"
-        title="Sign out"
-      >
-        {initials}
-      </button>
+        <button
+          onClick={onLogout}
+          className="h-8 w-8 rounded-full bg-terracotta text-terracotta-foreground hover:opacity-90 text-xs font-semibold flex items-center justify-center shrink-0 transition-opacity"
+          aria-label="Sign out"
+          title="Sign out"
+        >
+          {initials}
+        </button>
+      </div>
     </header>
   );
 }
