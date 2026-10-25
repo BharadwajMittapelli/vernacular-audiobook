@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, Settings, Menu, LogOut as LogoutIcon, Bell } from 'lucide-react';
+import { Upload, Menu, LogOut as LogoutIcon, Bell } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -9,7 +9,6 @@ export function TopBar({
   activeIdx,
   onMenuClick,
   onLoadNewBook,
-  onOpenConfig,
 }) {
   const { signOut, session } = useAuth();
   const user = session?.user;
@@ -33,26 +32,14 @@ export function TopBar({
 
       <div className="flex items-center gap-2 shrink-0 ml-auto">
         {book && (
-          <>
-            <button
-              onClick={onLoadNewBook}
-              aria-label="Load new book"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-terracotta text-background text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              <Upload className="h-4 w-4" />
-              New Upload
-            </button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onOpenConfig}
-              disabled={!book}
-              aria-label="Open audio configuration"
-            >
-              <Settings className="h-4 w-4 mr-1.5" />
-              Configure
-            </Button>
-          </>
+          <button
+            onClick={onLoadNewBook}
+            aria-label="Load new book"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-terracotta text-background text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            <Upload className="h-4 w-4" />
+            New Upload
+          </button>
         )}
         <Button
           variant="ghost"

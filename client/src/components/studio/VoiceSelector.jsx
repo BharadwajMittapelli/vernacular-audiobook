@@ -66,7 +66,7 @@ export function VoiceSelector({ language, onSelect, onLanguageChange, selectedVo
               aria-selected={isSelected}
               onClick={() => onSelect?.({ voiceProfile: v.id, languageCode: v.languageCode })}
               className={`
-                text-left p-3 rounded-lg border transition-colors flex items-start gap-2.5
+                text-left p-3 rounded-lg border transition-colors flex items-start gap-2.5 overflow-hidden
                 hover:border-terracotta/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta/40
                 ${isSelected ? 'border-terracotta bg-terracotta/5' : 'border-border bg-card'}
               `}
@@ -77,7 +77,7 @@ export function VoiceSelector({ language, onSelect, onLanguageChange, selectedVo
                 {initials}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">{v.name}</div>
+                <div className="text-sm font-medium break-words">{v.name}</div>
                 <div className="text-xs text-muted-foreground mt-0.5 capitalize">
                   {v.gender} · {v.accent}
                 </div>

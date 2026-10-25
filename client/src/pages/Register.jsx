@@ -20,7 +20,11 @@ export default function Register() {
       return;
     }
     const { error } = await signUp(email, password);
-    if (error) setError(error.message || 'Registration failed');
+    if (error) {
+      setError(error.message || 'Registration failed');
+    } else {
+      window.location.href = '/my-books';
+    }
     setSubmitting(false);
   };
 

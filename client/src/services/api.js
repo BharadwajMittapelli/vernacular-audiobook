@@ -52,6 +52,10 @@ export function getChapterAudio(chapterId) {
   return api.get(`/api/audio/${chapterId}`).then((res) => res.data);
 }
 
+export function getChapterDetails(chapterId) {
+  return api.get(`/api/studio/chapters/${chapterId}`).then((res) => res.data);
+}
+
 export function uploadDocument(file, language) {
   const form = new FormData();
   form.append('file', file);
@@ -62,6 +66,22 @@ export function uploadDocument(file, language) {
 
 export function getEmbedData(generationId) {
   return api.get(`/api/storefront/embed/${generationId}`).then((res) => res.data);
+}
+
+export function getBooks() {
+  return api.get('/api/studio').then((res) => res.data);
+}
+
+export function getBookDetails(bookId) {
+  return api.get(`/api/studio/${bookId}`).then((res) => res.data);
+}
+
+export function createBook({ title, chapters }) {
+  return api.post('/api/studio', { title, chapters }).then((res) => res.data);
+}
+
+export function deleteBook(bookId) {
+  return api.delete(`/api/studio/${bookId}`).then((res) => res.data);
 }
 
 export default api;

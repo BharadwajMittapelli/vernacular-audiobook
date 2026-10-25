@@ -4,10 +4,10 @@ import { Button } from '../ui/button.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const NAV_ITEMS = [
-  { label: 'Studio', icon: Mic, active: true },
-  { label: 'My Books', icon: BookOpen, active: false },
-  { label: 'Audio Library', icon: Library, active: false },
-  { label: 'Settings', icon: Settings, active: false },
+  { label: 'Studio', icon: Mic, route: '/' },
+  { label: 'My Books', icon: BookOpen, route: '/my-books' },
+  { label: 'Audio Library', icon: Library, route: '#', active: false },
+  { label: 'Settings', icon: Settings, route: '#', active: false },
 ];
 
 function estimateMinutes(ch) {
@@ -68,22 +68,23 @@ export function Sidebar({ book, activeChapterIdx, onChapterSelect, onNavClick, i
 
         {/* Nav items */}
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
+            const isRoute = item.route && item.route !== '#';
             return (
               <button
                 key={item.label}
-                onClick={() => onNavClick?.(item.label)}
-                disabled={!item.active}
+                onClick={() => isRoute && onNavClick?.(item.route)}
+                disabled={!isRoute}
                 className={`
                   w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
                   transition-colors
-                  ${item.active
-                    ? 'bg-terracotta/10 text-terracotta font-medium'
+                  ${isRoute
+                    ? 'text-foreground hover:bg-muted'
                     : 'text-muted-foreground opacity-60 cursor-not-allowed'
                   }
                 `}
-                aria-current={item.active ? 'page' : undefined}
+                aria-current={item.label === 'Studio' ? 'page' : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span>{item.label}</span>

@@ -18,6 +18,22 @@ export async function authMiddleware(req, res, next) {
     if (error || !user) {
       return res.status(401).json({ success: false, error: 'Invalid or expired token' });
     }
+
+    // Ensure application user record exists before protected operations
+    // User provisioning happens here because no signup hook or trigger exists
+    const { error: upsertError } = await supabase
+      .from('users')
+      .upsert(
+        { id: user.id, email: user.email, credits: 500 },
+        { onConflict: 'id', ignoreDuplicates: true }
+      );
+
+    if (upsertError) {
+      console.error('authMiddleware user upsert error:', upsertError.message);
+      // Stop request: don't continue to chapter insert that will predictably fail
+      return res.status(500).json({ success: false, error: 'Failed to provision user' });
+    }
+
     req.user = { id: user.id, email: user.email };
     next();
   } catch (err) {

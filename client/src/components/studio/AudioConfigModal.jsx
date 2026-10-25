@@ -50,6 +50,7 @@ export function AudioConfigModal({
               <span className="text-sm text-muted-foreground">{speed.toFixed(1)}x</span>
             </div>
             <Slider
+              className="terracotta-slider"
               value={[speed]}
               onValueChange={([v]) => onGenerate({ speed: v })}
               min={0.5}
