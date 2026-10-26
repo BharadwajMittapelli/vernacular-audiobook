@@ -154,7 +154,7 @@ export default function MyBooks() {
       <MyBooksSidebar activeItem="my-books" onNavClick={navigate} activePath={window.location.pathname} />
 
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        <MyBooksTopBar onUploadBook={handleUpload} onLogout={() => signOut()} />
+        <MyBooksTopBar onUploadBook={handleUpload} onLogout={() => { signOut(); window.location.href = '/'; }} />
 
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto px-6 py-8">

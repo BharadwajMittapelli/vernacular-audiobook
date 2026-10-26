@@ -23,8 +23,11 @@ export function AudioLibrarySidebar({ items = [], activePath, onNavClick }) {
     .toUpperCase();
 
   // Build recent books list from items: unique books sorted by last_opened_at desc
+  // ponytail: Array.isArray guard — if a prop is ever replaced with a non-iterable
+  // (e.g. a count) upstream, `for...of` would crash the whole page.
+  const safeItems = Array.isArray(items) ? items : [];
   const bookMap = new Map();
-  for (const item of items) {
+  for (const item of safeItems) {
     if (!bookMap.has(item.bookId)) {
       bookMap.set(item.bookId, {
         bookId: item.bookId,

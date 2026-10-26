@@ -28,6 +28,13 @@ export function VoiceSelector({ language, onSelect, onLanguageChange, selectedVo
   if (error) return <p className="text-sm text-destructive">{error}</p>;
   if (!voices) return <p className="text-sm text-muted-foreground">Loading voices…</p>;
 
+  // ponytail: defensive guard — server payload contract says `voices` is an array,
+  // but an HTTP layer or interceptor returning a non-array (e.g. a count) used to
+  // crash with "number N is not iterable" inside `.map`. Fail soft instead.
+  if (!Array.isArray(voices)) {
+    return <p className="text-sm text-destructive">Unexpected voices payload shape</p>;
+  }
+
   return (
     <div className="space-y-2" role="listbox" aria-label="Voices">
       {voices.map((v) => {

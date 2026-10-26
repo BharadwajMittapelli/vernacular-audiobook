@@ -739,7 +739,7 @@ function Dashboard() {
             <span className="text-xs text-muted-foreground font-medium">Audiobook</span>
           </div>
           <div className="ml-auto">
-            <Button onClick={signOut} variant="outline">Logout</Button>
+            <Button onClick={async () => { await signOut(); window.location.href = '/'; }} variant="outline">Logout</Button>
           </div>
         </header>
         <main className="flex-1 flex items-center justify-center p-4">

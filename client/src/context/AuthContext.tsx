@@ -24,6 +24,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   React.useEffect(() => {
     const initialize = async () => {
       try {
+        // ponytail: getSession() is now fast (local storage) + handles OAuth URL params
         const { data } = await supabase.auth.getSession();
         setSession(data?.session ?? null);
       } catch (e: unknown) {
@@ -34,23 +35,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
     void initialize();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
-        if (event === 'SIGNED_OUT') {
-          setSession(null);
-          setError(null);
-        } else if (event === 'TOKEN_REFRESHED' && newSession) {
-          setSession(newSession);
-          setError(null);
-        } else if (event === 'INITIAL_SESSION' && newSession) {
-          setSession(newSession);
-          setError(null);
-        }
+    // ponytail: subscribe to auth state changes with resilient return-shape handling
+    const result = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setError(null);
+      } else if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') && newSession) {
+        setSession(newSession);
+        setError(null);
       }
-    );
+    });
+
+    // Resiliently extract subscription — handles { data: { subscription } }, { subscription }, or direct subscription
+    let subscription: { unsubscribe: () => void } | null = null;
+    if (result && typeof result === 'object') {
+      subscription = (result as any)?.data?.subscription
+        ?? (result as any)?.subscription
+        ?? null;
+    }
 
     return () => {
-      subscription.unsubscribe();
+      // ponytail: guard against undefined/null subscription during cleanup
+      if (subscription && typeof subscription.unsubscribe === 'function') {
+        subscription.unsubscribe();
+      }
     };
   }, []);
 

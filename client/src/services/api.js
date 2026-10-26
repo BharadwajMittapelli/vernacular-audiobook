@@ -15,7 +15,10 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  const { data: { session } } = await supabase.auth.getSession();
+  // ponytail: defensive destructuring — protects against Supabase return-shape drift
+  // (would otherwise crash as "number N is not iterable" on a non-object return)
+  const result = await supabase.auth.getSession();
+  const session = result?.data?.session;
   if (session?.access_token) {
     config.headers.Authorization = `Bearer ${session.access_token}`;
   }

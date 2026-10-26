@@ -4,8 +4,11 @@ import { Play } from 'lucide-react';
 const PROGRESS_PCT = [0.30, 0.60, 0.80];
 
 export function ContinueListening({ items, onPlay }) {
+  // ponytail: guard against non-array `items` — `for...of` on a number throws
+  // "number N is not iterable" and bubbles up to the ErrorBoundary.
+  const safeItems = Array.isArray(items) ? items : [];
   const booksMap = new Map();
-  for (const item of items) {
+  for (const item of safeItems) {
     if (!booksMap.has(item.bookId)) {
       booksMap.set(item.bookId, {
         id: item.bookId,

@@ -37,7 +37,7 @@ export function SettingsTopBar() {
         </button>
 
         <button
-          onClick={async () => { await signOut(); navigate('/login'); }}
+          onClick={async () => { await signOut(); window.location.href = '/'; }}
           className="h-8 w-8 rounded-full bg-terracotta text-terracotta-foreground hover:opacity-90 text-xs font-semibold flex items-center justify-center transition-opacity"
           aria-label="Sign out"
           title="Sign out"

@@ -75,7 +75,7 @@ export default function Register() {
             </Button>
           </form>
           <div className="text-center text-sm">
-            <a href="/login" className="underline">Already have an account? Log in</a>
+            <a href="/auth" className="underline">Already have an account? Log in</a>
           </div>
         </div>
       </main>

@@ -97,7 +97,7 @@ export function MyBooksSidebar({ activeItem = 'my-books', onNavClick, activePath
               <p className="text-xs text-muted-foreground truncate">{email}</p>
             </div>
             <button
-              onClick={async () => { await signOut(); }}
+              onClick={async () => { await signOut(); window.location.href = '/'; }}
               className="shrink-0 p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
               aria-label="Sign out"
               title="Sign out"

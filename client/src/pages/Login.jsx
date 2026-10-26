@@ -68,7 +68,7 @@ export default function Login() {
             Continue with Google
           </Button>
           <div className="text-center text-sm">
-            <a href="/register" className="underline">Create an account</a>
+            <a href="/auth" className="underline">Create an account</a>
           </div>
         </div>
       </main>

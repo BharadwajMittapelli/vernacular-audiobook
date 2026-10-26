@@ -2,10 +2,25 @@ import React from 'react';
 import * as SliderPrimitive from '@radix-ui/react-slider';
 import { cn } from '../../lib/utils.js';
 
-function Slider({ className, ...props }) {
+function Slider({ className, value, defaultValue, ...props }) {
+  // ponytail: Radix Slider destructures `value`/`defaultValue` internally;
+  // if a caller ever passes a bare number (e.g. `value={1}`), V8 throws
+  // "number 1 is not iterable". Coerce primitives into single-element arrays.
+  const safeValue = Array.isArray(value)
+    ? value
+    : value === undefined
+      ? undefined
+      : [value];
+  const safeDefault = Array.isArray(defaultValue)
+    ? defaultValue
+    : defaultValue === undefined
+      ? undefined
+      : [defaultValue];
   return (
     <SliderPrimitive.Root
       className={cn('relative flex w-full touch-none select-none items-center', className)}
+      value={safeValue}
+      defaultValue={safeDefault}
       {...props}
     >
       <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-border">

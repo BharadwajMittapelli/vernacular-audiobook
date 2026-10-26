@@ -12,6 +12,11 @@ class ErrorBoundary extends React.Component {
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
   }
+  componentDidCatch(error, errorInfo) {
+    // ponytail: log full stack + component trace to pinpoint iterable crash
+    console.error('[ErrorBoundary]', error);
+    console.error('[ErrorBoundary] componentStack:', errorInfo?.componentStack);
+  }
   render() {
     if (this.state.hasError) {
       return (
@@ -19,6 +24,9 @@ class ErrorBoundary extends React.Component {
           <div className="max-w-md text-center space-y-4">
             <h1 className="text-xl font-semibold text-destructive">Something went wrong</h1>
             <p className="text-sm text-muted-foreground break-words">{this.state.error?.message}</p>
+            <pre className="text-[10px] text-left text-muted-foreground/60 whitespace-pre-wrap break-all max-h-64 overflow-auto">
+              {this.state.error?.stack || '(no stack)'}
+            </pre>
             <button
               onClick={() => window.location.reload()}
               className="px-4 py-2 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary-hover transition-colors"

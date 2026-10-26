@@ -151,7 +151,7 @@ export default function Settings() {
                 <p className="text-xs text-muted-foreground truncate">{email}</p>
               </div>
               <button
-                onClick={async () => { await signOut(); navigate('/login'); }}
+                onClick={async () => { await signOut(); window.location.href = '/'; }}
                 className="shrink-0 p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                 aria-label="Sign out"
                 title="Sign out"

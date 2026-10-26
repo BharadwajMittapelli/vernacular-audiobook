@@ -43,6 +43,7 @@ export function TopBar({
           size="icon"
           onClick={async () => {
             await signOut();
+            window.location.href = '/';
           }}
           aria-label="Sign out"
           title="Sign out"
