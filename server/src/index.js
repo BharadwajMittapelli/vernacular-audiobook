@@ -11,6 +11,7 @@ import voiceRouter from './routes/voiceRoutes.js';
 import documentRouter from './routes/documentRoutes.js';
 import studioRoutes from './routes/studioRoutes.js';
 import settingsRouter from './routes/settingsRoutes.js';
+import libraryRoutes from './routes/libraryRoutes.js';
 import { isCreditBypassed } from './services/creditService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -101,6 +102,9 @@ app.use('/api/studio', authMiddleware, studioRoutes);
 
 // Settings API — protected by authMiddleware.
 app.use('/api/settings', authMiddleware, settingsRouter);
+
+// Audio Library API — protected by authMiddleware.
+app.use('/api/library', authMiddleware, libraryRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);

@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 const NAV_ITEMS = [
   { label: 'Studio', icon: Mic, href: '/' },
   { label: 'My Books', icon: BookOpen, href: '/my-books' },
-  { label: 'Audio Library', icon: Library, href: '#' },
+  { label: 'Audio Library', icon: Library, href: '/audio-library' },
   { label: 'Settings', icon: Settings, href: '/settings' },
 ];
 

@@ -104,6 +104,10 @@ export function getSettingsStats() {
   return api.get('/api/settings/stats').then((res) => res.data);
 }
 
+export function getAllLibraryAudio() {
+  return api.get('/api/library/all-audio').then((res) => res.data);
+}
+
 export function updateProfile({ full_name, avatar_url }) {
   return api.put('/api/settings/profile', { full_name, avatar_url }).then((res) => res.data);
 }

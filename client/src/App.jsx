@@ -8,6 +8,7 @@ import MyBooks from './pages/MyBooks.jsx';
 import PublicListener from './pages/PublicListener.jsx';
 import Settings from './pages/Settings.jsx';
 import UpdatePassword from './pages/UpdatePassword.jsx';
+import AudioLibrary from './pages/AudioLibrary.jsx';
 
 function App() {
   const { session, loading } = useAuth();
@@ -84,6 +85,12 @@ function App() {
       return (
         <NavigateContext.Provider value={navigate}>
           <Settings />
+        </NavigateContext.Provider>
+      );
+    case '/audio-library':
+      return (
+        <NavigateContext.Provider value={navigate}>
+          <AudioLibrary />
         </NavigateContext.Provider>
       );
     default:
