@@ -3,38 +3,68 @@ import { Play, Pause } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Slider } from '../ui/slider.jsx';
 
-function Rewind10({ className }) {
+function Rewind10({ className = 'h-8 w-8' }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M3 10a9 9 0 1 1-.5 4" />
-      <polyline points="3 14 3 10 7 10" />
-      <text x="15" y="15" fontSize="8" fontWeight="bold" fill="currentColor" textAnchor="middle" dominantBaseline="middle">10</text>
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M 17 14 A 7 7 0 1 0 7 10"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <polyline
+        points="7 10 4 12 7 13"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <text
+        x="12"
+        y="13"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize="6.5"
+        fontWeight="600"
+        fill="currentColor"
+        stroke="none"
+      >
+        10
+      </text>
     </svg>
   );
 }
 
-function Forward10({ className }) {
+function Forward10({ className = 'h-8 w-8' }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M21 10a9 9 0 1 1-.5 4" />
-      <polyline points="21 14 21 10 17 10" />
-      <text x="9" y="15" fontSize="8" fontWeight="bold" fill="currentColor" textAnchor="middle" dominantBaseline="middle">10</text>
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M 7 14 A 7 7 0 1 1 17 10"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <polyline
+        points="17 10 20 12 17 13"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <text
+        x="12"
+        y="13"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize="6.5"
+        fontWeight="600"
+        fill="currentColor"
+        stroke="none"
+      >
+        10
+      </text>
     </svg>
   );
 }
@@ -105,36 +135,51 @@ export function BottomPlayer({
       )}
 
       {/* Play controls */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-center gap-5">
+        {/* Rewind 10 seconds */}
         <Button
           variant="ghost"
           size="icon"
-          onClick={onRewind10}
-          disabled={!hasAudio}
+          type="button"
           aria-label="Rewind 10 seconds"
-          className="rounded-full h-8 w-8 cursor-pointer"
+          title="Rewind 10 seconds"
+          disabled={!hasAudio}
+          onClick={onRewind10}
+          className="h-8 w-8 shrink-0 rounded-full p-0 text-foreground hover:bg-transparent"
         >
-          <Rewind10 className="h-4 w-4" />
+          <Rewind10 className="h-8 w-8" />
         </Button>
+
+        {/* Main Play/Pause control */}
         <Button
+          type="button"
           variant="default"
           size="icon"
-          onClick={isPlaying ? onPause : onPlay}
+          aria-label={isPlaying ? 'Pause audio' : 'Play audio'}
+          title={isPlaying ? 'Pause' : 'Play'}
           disabled={!hasAudio}
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-          className="rounded-full h-9 w-9 bg-foreground hover:bg-foreground/90 text-background cursor-pointer"
+          onClick={isPlaying ? onPause : onPlay}
+          className="h-12 w-12 shrink-0 rounded-full bg-foreground text-background hover:bg-foreground/90"
         >
-          {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+          {isPlaying ? (
+            <Pause className="h-6 w-6" fill="currentColor" />
+          ) : (
+            <Play className="h-6 w-6" fill="currentColor" />
+          )}
         </Button>
+
+        {/* Forward 10 seconds */}
         <Button
           variant="ghost"
           size="icon"
-          onClick={onForward10}
-          disabled={!hasAudio}
+          type="button"
           aria-label="Forward 10 seconds"
-          className="rounded-full h-8 w-8 cursor-pointer"
+          title="Forward 10 seconds"
+          disabled={!hasAudio}
+          onClick={onForward10}
+          className="h-8 w-8 shrink-0 rounded-full p-0 text-foreground hover:bg-transparent"
         >
-          <Forward10 className="h-4 w-4" />
+          <Forward10 className="h-8 w-8" />
         </Button>
       </div>
 
