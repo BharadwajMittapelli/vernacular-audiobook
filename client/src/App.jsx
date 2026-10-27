@@ -12,7 +12,7 @@ import LandingPage from './pages/LandingPage.jsx';
 
 function App() {
   const { session, loading } = useAuth();
-  const [path, setPath] = useState(window.location.pathname);
+  const [path, setPath] = useState(window.location.pathname + window.location.search);
 
   const navigate = useCallback((newPath) => {
     window.history.pushState({}, '', newPath);
@@ -20,7 +20,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const onPop = () => setPath(window.location.pathname);
+    const onPop = () => setPath(window.location.pathname + window.location.search);
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);

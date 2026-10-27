@@ -18,6 +18,7 @@ export function useAudioPlayer(audioUrl, alignment = []) {
     if (!audioUrl) return;
     setCurrentTime(0);
     setCurrentSentenceIndex(-1);
+    setIsPlaying(false);
 
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
