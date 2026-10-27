@@ -8,7 +8,7 @@ import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { MainLayout } from '../components/layout/MainLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
-import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus } from '../services/api.js';
+import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
@@ -159,11 +159,13 @@ function Dashboard() {
   const currentBookIdRef = React.useRef(null);
   const [bookStatus, setBookStatus] = React.useState(null);
   const pollIntervalRef = React.useRef(null);
+  const [isSpatialEnabled, setIsSpatialEnabled] = React.useState(false);
 
   // Initialize from ?bookId query parameter on mount
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const bookId = params.get('bookId');
+    console.log('[Dashboard] Mount with bookId:', bookId, 'path:', window.location.pathname + window.location.search);
     if (!bookId) {
       navigate('/my-books');
       return;
@@ -172,9 +174,24 @@ function Dashboard() {
     let cancelled = false;
     setIsLoadingBook(true);
     currentBookIdRef.current = bookId;
+
+    // ponytail: retry on 404 to handle Supabase replication lag after book creation
+    const fetchBookWithRetry = async (id, retries = 3, delayMs = 200) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await getBookDetails(id);
+          if (res?.success) return res;
+        } catch (err) {
+          if (err.response?.status !== 404) throw err;
+          if (i < retries - 1) await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
+          else throw err;
+        }
+      }
+    };
+
     (async () => {
       try {
-        const res = await getBookDetails(bookId);
+        const res = await fetchBookWithRetry(bookId);
         if (cancelled) return;
         setIsLoadingBook(false);
         if (!res || !res.success) return;
@@ -216,8 +233,17 @@ function Dashboard() {
         if (cancelled) return;
         setIsLoadingBook(false);
         const status = err.response?.status;
-        if (status === 404) {
-          setError('Book not found. It may have been deleted.');
+        console.error('[Dashboard] Error loading book:', {
+          bookId,
+          status,
+          responseData: err.response?.data,
+          message: err.message,
+          url: err.config?.url,
+        });
+        if (status === 401) {
+          setError('Authentication required. Please sign in again.');
+        } else if (status === 404) {
+          setError('Book not found or you do not have access to it.');
           if (currentBookIdRef.current === bookId) {
             sessionStorage.removeItem('lastBookId');
           }
@@ -348,6 +374,25 @@ function Dashboard() {
       } finally {
         setIsGenerating(false);
       }
+    }
+  };
+
+  const handleSpatialGenerate = async () => {
+    if (!chapter || isGenerating) return;
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const blob = await spatialPreview({
+        chapterText: cleanOcrText(chapter.text),
+        bookId: book?.id,
+      });
+      const url = URL.createObjectURL(blob);
+      setAudioResult({ audioUrl: url, alignment: [] });
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to generate spatial audio';
+      setError(msg);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -652,6 +697,30 @@ function Dashboard() {
               />
             </div>
 
+            {/* Spatial 3D Engine Toggle */}
+            <div className="flex items-center gap-3 p-3 bg-muted/40 border border-border rounded-xl my-1">
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="text-sm font-medium text-foreground flex items-center gap-2">
+                  Spatial 3D Engine
+                  <span className="text-[10px] bg-terracotta/10 text-terracotta px-1.5 py-0.5 rounded-full font-semibold shrink-0">
+                    AI Director
+                  </span>
+                </span>
+                <span className="text-xs text-muted-foreground truncate">
+                  Multi-track spatial audio staging via FFmpeg
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={isSpatialEnabled}
+                  onChange={(e) => setIsSpatialEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-terracotta"></div>
+              </label>
+            </div>
+
             {/* Estimated credits card */}
             <div className="rounded-lg p-3 flex items-center justify-between border border-border bg-muted/50">
               <div>
@@ -670,15 +739,8 @@ function Dashboard() {
           <div className="shrink-0 px-3 pb-3 flex flex-col gap-2">
             {/* Generate Audio */}
             <button
-              onClick={() =>
-                handleGenerate({
-                  language: selectedLanguage,
-                  voiceProfile: selectedVoice,
-                  speed,
-                  submit: true,
-                })
-              }
-              disabled={isGenerating || !selectedVoice || !chapter}
+              onClick={() => isSpatialEnabled ? handleSpatialGenerate() : handleGenerate({ language: selectedLanguage, voiceProfile: selectedVoice, speed, submit: true })}
+              disabled={isGenerating || (!isSpatialEnabled && (!selectedVoice || !chapter))}
               className="w-full bg-foreground text-background rounded-lg py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-opacity flex items-center justify-center gap-2"
             >
               {isGenerating ? (
@@ -689,7 +751,7 @@ function Dashboard() {
               ) : (
                 <>
                   <Zap className="h-4 w-4" />
-                  Generate Audio
+                  {isSpatialEnabled ? 'Generate Spatial' : 'Generate Audio'}
                 </>
               )}
             </button>

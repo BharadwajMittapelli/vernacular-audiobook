@@ -14,13 +14,45 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4001',
 });
 
+// ponytail: hold a reference to the session resolver so interceptors can await it
+let sessionPromise = supabase.auth.getSession();
+
+// Refresh the session promise whenever auth state changes
+supabase.auth.onAuthStateChange((_event, session) => {
+  sessionPromise = Promise.resolve(session);
+});
+
 api.interceptors.request.use(async (config) => {
+  // DEBUG: Log outgoing request
+  console.log('[API Interceptor] Request:', config.method?.toUpperCase(), config.url);
+
   // ponytail: defensive destructuring — protects against Supabase return-shape drift
   // (would otherwise crash as "number N is not iterable" on a non-object return)
-  const result = await supabase.auth.getSession();
-  const session = result?.data?.session;
-  if (session?.access_token) {
-    config.headers.Authorization = `Bearer ${session.access_token}`;
+  try {
+    const { data } = await supabase.auth.getSession();
+    const session = data?.session;
+
+    // DEBUG: Log session state
+    console.log('[API Interceptor] Session:', session ? { hasToken: !!session.access_token, tokenPreview: session.access_token?.slice(0, 20) + '...' } : 'NO SESSION');
+
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+      console.log('[API Interceptor] Auth header set:', config.headers.Authorization?.slice(0, 30) + '...');
+    } else {
+      // Session not ready yet — wait briefly and retry once
+      console.log('[API Interceptor] No token, waiting 100ms...');
+      await new Promise((r) => setTimeout(r, 100));
+      const { data: refreshed } = await supabase.auth.getSession();
+      if (refreshed?.session?.access_token) {
+        config.headers.Authorization = `Bearer ${refreshed.session.access_token}`;
+        console.log('[API Interceptor] Auth header set after retry:', config.headers.Authorization?.slice(0, 30) + '...');
+      } else {
+        console.warn('[API Interceptor] STILL no token after retry!');
+      }
+    }
+  } catch (err) {
+    console.error('[API Interceptor] Error fetching session:', err);
+    // Silently continue without auth header if session fetch fails
   }
   return config;
 });
@@ -81,6 +113,12 @@ export function getPublicBook(bookId) {
 
 export function exportBookMp3(bookId) {
   return api.get(`/api/studio/${bookId}/export-mp3`, { responseType: 'blob' });
+}
+
+export function spatialPreview({ chapterText, bookId }) {
+  return api
+    .post('/api/studio/spatial-preview', { chapterText, bookId }, { responseType: 'blob' })
+    .then((res) => res.data);
 }
 
 export function getBooks() {

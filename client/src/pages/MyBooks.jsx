@@ -95,6 +95,8 @@ export default function MyBooks() {
         setShowUploader(false);
         setUploadResult(null);
         setBooks((prev) => [res.book, ...prev]);
+        // ponytail: brief delay before navigation to allow Supabase replication
+        await new Promise((r) => setTimeout(r, 300));
         navigate(`/?bookId=${res.book.id}`);
       } catch (err) {
         // In development, show the actual error for debugging

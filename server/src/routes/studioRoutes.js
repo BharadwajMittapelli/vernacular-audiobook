@@ -3,6 +3,12 @@ import rateLimit from 'express-rate-limit';
 import { v4 as uuidv4 } from 'uuid';
 import { stripMarkdown } from '../services/textProcessor.js';
 import { synthesizeText } from '../services/ttsProvider.js';
+import { generateSpatialScript } from '../services/llmDirector.js';
+import { classifyBookGenre } from '../services/genreClassifier.js';
+import { randomUUID } from 'crypto';
+import { tmpdir } from 'os';
+import { unlink, writeFile } from 'fs/promises';
+import { resolve } from 'path';
 import { uploadAudio, resolveAudioUrl } from '../services/storageService.js';
 import { auditAudio } from '../services/audioAuditService.js';
 import { supabase } from '../config/supabase.js';
@@ -46,7 +52,138 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST / — ingest a parsed document (title + chapters[]) into books + chapters tables
+// POST /spatial-preview — AI-driven spatial audio preview
+router.post('/spatial-preview', async (req, res) => {
+  const { chapterText, bookId } = req.body;
+
+  if (!chapterText || typeof chapterText !== 'string' || !chapterText.trim()) {
+    return res.status(400).json({ success: false, error: 'chapterText is required' });
+  }
+
+  // Fetch book's audio_profile if bookId provided
+  let audioProfile = 'General Narrative';
+  if (bookId) {
+    try {
+      const { data: book } = await supabase
+        .from('books')
+        .select('audio_profile')
+        .eq('id', bookId)
+        .eq('user_id', req.user.id)
+        .single();
+      if (book?.audio_profile) {
+        audioProfile = book.audio_profile;
+      }
+    } catch (err) {
+      console.warn('[Spatial DSP] Failed to fetch audio_profile:', err.message);
+    }
+  }
+
+  const tempPaths = [];
+  try {
+    // 1. Generate script via Gemini with atmospheric profile
+    const script = await generateSpatialScript(chapterText.trim(), audioProfile);
+
+    // Validate response shape
+    if (!script.main || !script.main.text) {
+      throw new Error('Invalid Gemini response: missing main.text');
+    }
+
+    // Build track array from script (skip empty optional tracks)
+    const tracks = [
+      { text: script.main.text, voice: script.main.voice, language: script.main.language, label: 'main' },
+      ...(script.sidekick?.text ? [{ text: script.sidekick.text, voice: script.sidekick.voice, language: script.sidekick.language, label: 'sec' }] : []),
+      ...(script.ambient?.text ? [{ text: script.ambient.text, voice: script.ambient.voice, language: script.ambient.language, label: 'amb' }] : []),
+    ];
+
+    // 2. Parallel synthesis with Promise.allSettled
+    const settled = await Promise.allSettled(
+      tracks.map(async (t) => {
+        const buf = (await synthesizeText(t.text, t.language, t.voice)).audioBuffer;
+        const p = resolve(tmpdir(), `${t.label}_${randomUUID()}.wav`);
+        await writeFile(p, buf);
+        tempPaths.push(p);
+        return p;
+      })
+    );
+
+    // 3. Extract results safely by matching track labels (not positions)
+    const mainResult = settled[0];
+    if (mainResult.status === 'rejected') {
+      throw mainResult.reason;
+    }
+    const mainPath = mainResult.value;
+
+    let sidekickPath = null;
+    let ambientPath = null;
+
+    tracks.forEach((t, idx) => {
+      const result = settled[idx];
+      if (result.status === 'fulfilled') {
+        if (t.label === 'sec') sidekickPath = result.value;
+        if (t.label === 'amb') ambientPath = result.value;
+      } else {
+        console.warn(`[Spatial DSP] Track '${t.label}' failed:`, result.reason?.message ?? result.reason);
+      }
+    });
+
+    // 4. Load FFmpeg
+    const ffmpeg = (await import('fluent-ffmpeg')).default;
+    const ffmpegPath = (await import('ffmpeg-static')).default;
+    ffmpeg.setFfmpegPath(ffmpegPath);
+    ffmpeg.setFfprobePath(ffmpegPath);
+
+    const ffmpegProcess = ffmpeg();
+
+    // 5. Dynamic filter builder
+    let inputCount = 0;
+    const filters = [];
+
+    ffmpegProcess.input(mainPath);
+    filters.push(`[${inputCount}:a]volume=1.0,pan=stereo|c0=FL|c1=FR[main]`);
+    inputCount++;
+
+    if (sidekickPath) {
+      ffmpegProcess.input(sidekickPath);
+      filters.push(`[${inputCount}:a]volume=0.5,pan=stereo|c1=FR[sidekick]`);
+      inputCount++;
+    }
+
+    if (ambientPath) {
+      ffmpegProcess.input(ambientPath);
+      filters.push(`[${inputCount}:a]volume=0.15,aecho=0.8:0.9:1000:0.3[bg]`);
+      inputCount++;
+    }
+
+    if (inputCount > 1) {
+      const trackLabels = ['main'];
+      if (sidekickPath) trackLabels.push('sidekick');
+      if (ambientPath) trackLabels.push('bg');
+      const inputsString = trackLabels.map((l) => `[${l}]`).join('');
+      filters.push(`${inputsString}amix=inputs=${inputCount}:duration=first:dropout_transition=2[out]`);
+    }
+
+    // 6. Stream
+    ffmpegProcess
+      .complexFilter(filters, inputCount > 1 ? 'out' : 'main')
+      .on('error', (err) => {
+        console.error('[Spatial DSP] Error:', err.message);
+        if (!res.headersSent) res.status(500).json({ success: false, error: 'Synthesis failed' });
+      })
+      .on('end', () => { console.log('[Spatial DSP] Mix complete'); });
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Disposition', 'attachment; filename="spatial-preview.mp3"');
+    res.setHeader('Cache-Control', 'no-store');
+    ffmpegProcess.outputFormat('mp3').pipe(res, { end: true });
+  } catch (error) {
+    console.error('[Spatial DSP] Route error:', error);
+    if (!res.headersSent) res.status(500).json({ success: false, error: error.message || 'Spatial audio synthesis failed' });
+  } finally {
+    for (const p of tempPaths) await unlink(p).catch(() => {});
+  }
+});
+
+// POST / — ingest a parsed document (title + chapters[]) into books + chapters tabless
 router.post('/', async (req, res) => {
   try {
     const { title, chapters, language } = req.body;
@@ -119,9 +256,23 @@ router.post('/', async (req, res) => {
       .eq('book_id', book.id)
       .order('sequence_number', { ascending: true });
 
+    // ponytail: classify genre after insert; non-blocking — book is still valid without it
+    const firstChapterText = chaptersData[0]?.text_content ?? '';
+    let audioProfile = 'General Narrative';
+    try {
+      audioProfile = await classifyBookGenre(firstChapterText);
+      await supabase
+        .from('books')
+        .update({ audio_profile: audioProfile })
+        .eq('id', book.id)
+        .eq('user_id', req.user.id);
+    } catch (classifyErr) {
+      console.warn('[Studio] Genre classification failed:', classifyErr.message);
+    }
+
     res.json({
       success: true,
-      book: { id: book.id, title: book.title, total_chapters: book.total_chapters, completed_chapters: book.completed_chapters, status: book.status, created_at: book.created_at, language: book.language },
+      book: { id: book.id, title: book.title, total_chapters: book.total_chapters, completed_chapters: book.completed_chapters, status: book.status, created_at: book.created_at, language: book.language, audio_profile: audioProfile },
       chapters: insertedChapters || [],
     });
   } catch (error) {
@@ -454,16 +605,24 @@ router.get('/:bookId/export-mp3', exportLimiter, async (req, res) => {
 router.get('/:bookId', async (req, res) => {
   try {
     const { bookId } = req.params;
+    console.log('[GET /studio/:bookId] bookId:', bookId, 'user_id:', req.user?.id, 'authHeader:', req.headers.authorization?.slice(0, 30) + '...');
 
     const { data: book, error: bookError } = await supabase
       .from('books')
-      .select('id, title, cover_url, total_chapters, completed_chapters, status, created_at, last_opened_at, language')
+      .select('id, title, cover_url, total_chapters, completed_chapters, status, created_at, last_opened_at, language, audio_profile')
       .eq('id', bookId)
       .eq('user_id', req.user.id)
       .single();
 
+    console.log('[GET /studio/:bookId] DB result:', book ? { found: true, id: book.id } : { found: false, error: bookError?.message });
+
     if (bookError || !book) {
-      return res.status(404).json({ success: false, error: 'Book not found' });
+      // Distinguish between "not authenticated" and "book not found/unauthorized"
+      if (!req.user || req.user.id === '00000000-0000-0000-0000-000000000001') {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+      // Book exists but user doesn't have permission (BOLA prevention)
+      return res.status(404).json({ success: false, error: 'Book not found or access denied' });
     }
 
     // Fire-and-forget: update last_opened_at without blocking the response
@@ -486,7 +645,12 @@ router.get('/:bookId', async (req, res) => {
 
     res.json({ success: true, book, chapters: chapters || [] });
   } catch (error) {
-    console.error('GET /studio/:bookId error:', error);
+    console.error('GET /studio/:bookId error:', {
+      bookId: req.params.bookId,
+      userId: req.user?.id,
+      error: error.message,
+      code: error.code,
+    });
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
