@@ -52,7 +52,7 @@ export function MyBooksSidebar({ activeItem = 'my-books', onNavClick, activePath
                     onNavClick?.('/?bookId=' + remembered);
                     return;
                   }
-                  onNavClick?.('/my-books');
+                  onNavClick?.('/');
                   return;
                 }
                 onNavClick?.(item.href);
