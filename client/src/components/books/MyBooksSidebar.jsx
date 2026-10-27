@@ -52,6 +52,7 @@ export function MyBooksSidebar({ activeItem = 'my-books', onNavClick, activePath
                     onNavClick?.('/?bookId=' + remembered);
                     return;
                   }
+                  onNavClick?.('/my-books');
                   return;
                 }
                 onNavClick?.(item.href);

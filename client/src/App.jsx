@@ -46,6 +46,9 @@ function App() {
     if (loading || !session) return;
     if (path.startsWith('/listen/')) return;
     if (path === '/my-books') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('bookId')) return;
+    if (path !== '/') return;
     navigate('/my-books');
   }, [session, loading, path, navigate]);
 
