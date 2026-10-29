@@ -3,29 +3,43 @@ import { Play, Pause } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 import { Slider } from '../ui/slider.jsx';
 
+/**
+ * Rewind 10 seconds.
+ * Circular arrow with an upper-left arrowhead and centered "10".
+ */
 function Rewind10({ className = 'h-8 w-8' }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 36 36"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      {/* Circular rewind arc */}
       <path
-        d="M 17 14 A 7 7 0 1 0 7 10"
+        d="M 9 11 A 12 12 0 1 1 7 22"
         stroke="currentColor"
-        strokeWidth="1.8"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+
+      {/* Upper-left arrowhead */}
+      <path
+        d="M 15 5 L 7 5 L 7 13"
+        stroke="currentColor"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <polyline
-        points="7 10 4 12 7 13"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+
+      {/* Centered 10-second label */}
       <text
-        x="12"
-        y="13"
+        x="18"
+        y="20"
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize="6.5"
+        fontSize="9"
         fontWeight="600"
         fill="currentColor"
         stroke="none"
@@ -36,29 +50,43 @@ function Rewind10({ className = 'h-8 w-8' }) {
   );
 }
 
+/**
+ * Forward 10 seconds.
+ * Circular arrow with an upper-right arrowhead and centered "10".
+ */
 function Forward10({ className = 'h-8 w-8' }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+    <svg
+      viewBox="0 0 36 36"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      {/* Circular forward arc */}
       <path
-        d="M 7 14 A 7 7 0 1 1 17 10"
+        d="M 27 11 A 12 12 0 1 0 29 22"
         stroke="currentColor"
-        strokeWidth="1.8"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+
+      {/* Upper-right arrowhead */}
+      <path
+        d="M 21 5 L 29 5 L 29 13"
+        stroke="currentColor"
+        strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <polyline
-        points="17 10 20 12 17 13"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+
+      {/* Centered 10-second label */}
       <text
-        x="12"
-        y="13"
+        x="18"
+        y="20"
         textAnchor="middle"
         dominantBaseline="middle"
-        fontSize="6.5"
+        fontSize="9"
         fontWeight="600"
         fill="currentColor"
         stroke="none"
@@ -71,8 +99,10 @@ function Forward10({ className = 'h-8 w-8' }) {
 
 function formatTime(s) {
   if (!isFinite(s)) return '0:00';
+
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
+
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
@@ -93,7 +123,9 @@ export function BottomPlayer({
   onRateChange,
 }) {
   const hasAudio = !!audioUrl;
+
   const chapterTitle = currentChapterTitle || '';
+
   const initials = (chapterTitle || bookTitle || 'A')
     .split(' ')
     .map((s) => s[0])
@@ -121,10 +153,12 @@ export function BottomPlayer({
               {initials}
             </div>
           )}
+
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-foreground truncate">
               {chapterTitle}
             </p>
+
             {bookTitle && (
               <p className="text-[10px] text-muted-foreground truncate">
                 {bookTitle}
@@ -134,8 +168,8 @@ export function BottomPlayer({
         </div>
       )}
 
-      {/* Play controls */}
-      <div className="flex items-center justify-center gap-5">
+      {/* Play controls: Rewind | Play/Pause | Forward */}
+      <div className="flex items-center justify-center gap-5 shrink-0">
         {/* Rewind 10 seconds */}
         <Button
           variant="ghost"
@@ -205,11 +239,12 @@ export function BottomPlayer({
         {formatTime(duration)}
       </span>
 
-      {/* Speed selector */}
+      {/* Playback speed selector */}
       <div className="flex items-center gap-1.5 shrink-0">
         <label htmlFor="player-speed" className="text-xs text-muted-foreground">
           Speed
         </label>
+
         <select
           id="player-speed"
           value={playbackRate}
@@ -219,7 +254,9 @@ export function BottomPlayer({
           aria-label="Playback speed"
         >
           {[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => (
-            <option key={r} value={r}>{r}x</option>
+            <option key={r} value={r}>
+              {r}x
+            </option>
           ))}
         </select>
       </div>
