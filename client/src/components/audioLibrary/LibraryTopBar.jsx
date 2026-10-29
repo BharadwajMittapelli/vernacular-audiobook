@@ -43,7 +43,7 @@ export function LibraryTopBar({
           >
             <Icon className="h-3.5 w-3.5" />
             <span>{label}</span>
-            {key !== 'all' && (
+            {key !== 'all' && key !== 'downloads' && (
               <span className="text-[10px] bg-terracotta/10 text-terracotta px-1.5 py-0.5 rounded-full">
                 Soon
               </span>

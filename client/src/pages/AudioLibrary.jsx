@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Bell, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from '../context/NavigateContext.jsx';
-import { getAllLibraryAudio } from '../services/api.js';
+import { getAllLibraryAudio, getDownloads, exportBookMp3, getChapterAudio } from '../services/api.js';
+import { DownloadsView } from '../components/audioLibrary/DownloadsView.jsx';
 import { AudioLibrarySidebar } from '../components/audioLibrary/AudioLibrarySidebar.jsx';
 import { LibraryTopBar } from '../components/audioLibrary/LibraryTopBar.jsx';
 import { AudioTable } from '../components/audioLibrary/AudioTable.jsx';
@@ -32,6 +33,10 @@ export default function AudioLibrary() {
   const [activeTab, setActiveTab] = useState('all');
   const [bookFilter, setBookFilter] = useState(null);
   const [playbackRate, setPlaybackRate] = useState(1.0);
+  const [downloads, setDownloads] = useState([]);
+  const [downloadsLoading, setDownloadsLoading] = useState(false);
+  const [downloadsError, setDownloadsError] = useState(null);
+  const [selectedDownloadId, setSelectedDownloadId] = useState(null);
 
   const audioRef = useRef(null);
 
@@ -53,6 +58,64 @@ export default function AudioLibrary() {
         setError(err.message || 'Failed to load audio library');
       })
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'downloads') return;
+    setDownloadsLoading(true);
+    setDownloadsError(null);
+    getDownloads()
+      .then((res) => {
+        if (res.success) {
+          setDownloads(res.downloads || []);
+        } else {
+          setDownloadsError(res.error || 'Failed to load downloads');
+        }
+      })
+      .catch((err) => {
+        setDownloadsError(err.message || 'Failed to load downloads');
+      })
+      .finally(() => setDownloadsLoading(false));
+  }, [activeTab]);
+
+  const handleDownloadAgain = useCallback(async (item) => {
+    if (!item) return;
+    try {
+      if (item.exportType === 'chapter' && item.bookChapterId) {
+        const audioData = await getChapterAudio(item.bookChapterId);
+        if (!audioData?.audioUrl) throw new Error('No audio URL available');
+        const res = await fetch(audioData.audioUrl);
+        if (!res.ok) throw new Error(`Audio fetch failed: ${res.status}`);
+        const blob = await res.blob();
+        if (blob.type && !blob.type.startsWith('audio/')) {
+          throw new Error('Unexpected content type');
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = item.fileName || 'chapter.mp3';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      } else {
+        const res = await exportBookMp3(item.bookId);
+        const url = URL.createObjectURL(res.data);
+        const a = document.createElement('a');
+        a.href = url;
+        const contentDisp = res.headers['content-disposition'] || '';
+        const match = contentDisp.match(/filename\*?=['"]?(?:UTF-8'')?([^"';\s]+)['"]?/);
+        const filename = match ? decodeURIComponent(match[1]) : 'audiobook.mp3';
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+    } catch (err) {
+      console.error('[AudioLibrary] Download again failed:', err);
+      throw err;
+    }
   }, []);
 
   const playChapter = useCallback((chapterId) => {
@@ -216,6 +279,10 @@ export default function AudioLibrary() {
                   />
                   <ContinueListening items={items} onPlay={playChapter} />
                 </>
+              ) : activeTab === 'downloads' ? (
+                <div className="flex-1 flex flex-col overflow-y-auto pr-4">
+                  <DownloadsView onDownloadAgain={handleDownloadAgain} />
+                </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-center">
                   <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">

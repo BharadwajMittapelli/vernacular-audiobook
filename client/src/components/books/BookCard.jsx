@@ -1,6 +1,6 @@
 import React from 'react';
 import { MoreHorizontal, Trash2, Download, Loader2 } from 'lucide-react';
-import { exportBookMp3 } from '../../services/api.js';
+import { exportBookMp3, logExport } from '../../services/api.js';
 
 function getStatusColor(status) {
   switch (status) {
@@ -39,6 +39,17 @@ export function BookCard({ book, onOpen, onDelete, onShare, deleting }) {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+      // Log successful export (non-blocking, fire-and-forget)
+      const ext = res.data.type === 'audio/mpeg' || res.data.type === 'audio/mp3' ? 'mp3' : 'wav';
+      logExport({
+        bookId: book.id,
+        bookTitle: book.title,
+        bookCoverUrl: book.cover_url,
+        fileName: filename,
+        fileFormat: ext,
+        fileSize: res.data.size,
+      }).catch((err) => console.error('[BookCard] Failed to log export:', err));
     } catch (err) {
       console.error('[BookCard] Export failed:', err);
     } finally {

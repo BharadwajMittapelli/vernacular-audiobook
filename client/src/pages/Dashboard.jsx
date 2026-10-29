@@ -8,7 +8,7 @@ import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { MainLayout } from '../components/layout/MainLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
-import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview } from '../services/api.js';
+import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
@@ -464,6 +464,17 @@ function Dashboard() {
       const ext = blob.type === 'audio/mpeg' || blob.type === 'audio/mp3' ? 'mp3' : 'wav';
       // ponytail: 2000ms revoke delay so large binaries aren't cancelled mid-transfer
       downloadBlob(blob, `${safe}.${ext}`, 2000);
+      // Log export to history (non-blocking, fire-and-forget)
+      logExport({
+        bookId: currentBookIdRef.current,
+        bookTitle: book?.title || 'Untitled Book',
+        bookCoverUrl: book?.coverUrl,
+        fileName: `${safe}.${ext}`,
+        fileFormat: ext,
+        fileSize: blob.size,
+        exportType: 'chapter',
+        bookChapterId: chapter?.chapterId,
+      }).catch((err) => console.error('[Dashboard] Failed to log export:', err));
     } catch (err) {
       console.error('Export failed:', err);
       setError('Audio download failed — the link may have expired or CORS blocked it. Try again.');

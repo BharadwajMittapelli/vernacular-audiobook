@@ -153,4 +153,16 @@ export function updateProfile({ full_name, avatar_url }) {
   return api.put('/api/settings/profile', { full_name, avatar_url }).then((res) => res.data);
 }
 
+export function logExport(download) {
+  return api.post('/api/library/downloads/log', download).then((res) => res.data);
+}
+
+export function getDownloads() {
+  return api.get('/api/library/downloads').then((res) => res.data);
+}
+
+export function deleteDownload(id) {
+  return api.delete(`/api/library/downloads/${id}`).then((res) => res.data);
+}
+
 export default api;
