@@ -92,7 +92,7 @@ export function BookUploader({ onDocumentLoaded }) {
         >
           {languages.map((code) => (
             <option key={code} value={code}>
-              {LANGUAGE_LABELS[code] ?? code} ({code})
+              {LANGUAGE_LABELS[code] ?? code}
             </option>
           ))}
         </select>

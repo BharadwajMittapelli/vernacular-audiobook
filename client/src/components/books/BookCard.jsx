@@ -1,5 +1,5 @@
 import React from 'react';
-import { MoreHorizontal, Trash2, Download } from 'lucide-react';
+import { MoreHorizontal, Trash2, Download, Loader2 } from 'lucide-react';
 import { exportBookMp3 } from '../../services/api.js';
 
 function getStatusColor(status) {
@@ -20,7 +20,7 @@ function getStatusLabel(status) {
   }
 }
 
-export function BookCard({ book, onOpen, onDelete, onShare }) {
+export function BookCard({ book, onOpen, onDelete, onShare, deleting }) {
   const [downloading, setDownloading] = React.useState(false);
   const initials = (book.title || '').slice(0, 2).toUpperCase();
 
@@ -100,11 +100,16 @@ export function BookCard({ book, onOpen, onDelete, onShare }) {
             {onDelete && (
               <button
                 onClick={onDelete}
-                className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                disabled={deleting === book.id}
+                className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Delete book"
                 title="Delete book"
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                {deleting === book.id ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
               </button>
             )}
             {book.status === 'completed' && (

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { BookOpen, Grid, List, Search, X, Upload } from 'lucide-react';
+import { BookOpen, Grid, List, Search, X, Upload, Loader2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from '../context/NavigateContext.jsx';
 import { getBooks, deleteBook, createBook } from '../services/api.js';
@@ -8,7 +8,6 @@ import { MyBooksSidebar } from '../components/books/MyBooksSidebar.jsx';
 import { MyBooksTopBar } from '../components/books/MyBooksTopBar.jsx';
 import { ActionCard } from '../components/books/ActionCard.jsx';
 import { BookCard } from '../components/books/BookCard.jsx';
-import { RecentlyOpenedCard } from '../components/books/RecentlyOpenedCard.jsx';
 import { BookEmptyState } from '../components/books/BookEmptyState.jsx';
 import { FeatureCards } from '../components/books/FeatureCards.jsx';
 import { ShareDialog } from '../components/books/ShareDialog.jsx';
@@ -37,11 +36,14 @@ export default function MyBooks() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('bookshelf');
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState('grid');
+  const [viewMode, setViewMode] = useState('list');
   const [showUploader, setShowUploader] = useState(false);
   const [uploadResult, setUploadResult] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [shareBook, setShareBook] = useState(null);
+  const [deletingBookId, setDeletingBookId] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
+  const [confirmDeleteBook, setConfirmDeleteBook] = useState(null);
 
   const fetchBooks = useCallback(async () => {
     setLoading(true);
@@ -64,14 +66,39 @@ export default function MyBooks() {
     fetchBooks();
   }, [fetchBooks]);
 
-  const handleDelete = async (bookId) => {
-    try {
-      await deleteBook(bookId);
-      setBooks((prev) => prev.filter((b) => b.id !== bookId));
-    } catch (err) {
-      console.error('Failed to delete book:', err);
+  const handleDelete = (bookId) => {
+    const book = books.find((b) => b.id === bookId);
+    if (book) {
+      setConfirmDeleteBook(book);
     }
   };
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!confirmDeleteBook || deletingBookId) return;
+
+    setDeletingBookId(confirmDeleteBook.id);
+    setDeleteError(null);
+
+    try {
+      const res = await deleteBook(confirmDeleteBook.id);
+      if (res?.success) {
+        setBooks((prev) => prev.filter((b) => b.id !== confirmDeleteBook.id));
+        setConfirmDeleteBook(null);
+      } else {
+        setDeleteError(res?.error || 'Failed to delete book');
+      }
+    } catch (err) {
+      const errorMsg = err.response?.data?.error || err.message || 'Failed to delete book';
+      setDeleteError(errorMsg);
+    } finally {
+      setDeletingBookId(null);
+    }
+  }, [confirmDeleteBook, deletingBookId]);
+
+  const handleCancelDelete = useCallback(() => {
+    setConfirmDeleteBook(null);
+    setDeleteError(null);
+  }, []);
 
   const handleUpload = useCallback(() => {
     setShowUploader(true);
@@ -122,11 +149,6 @@ export default function MyBooks() {
   const bookshelfBooks = sortedBooks.filter((b) => bookshelfIds.has(b.id));
   const recentBooksFull = sortedBooks.filter((b) => !bookshelfIds.has(b.id));
 
-  const recentlyOpened = [...books]
-    .filter(b => b.last_opened_at)
-    .sort((a, b) => new Date(b.last_opened_at) - new Date(a.last_opened_at))
-    .slice(0, 5);
-
   // Search is applied AFTER the bookshelf/recent split
   const searchLower = searchQuery.toLowerCase();
   const bookshelfFiltered = bookshelfBooks.filter((book) =>
@@ -150,6 +172,63 @@ export default function MyBooks() {
     { key: 'shared', label: 'Shared', badge: 'Coming soon' },
     { key: 'favorites', label: 'Favorites', badge: 'Coming soon' },
   ];
+
+  function DeleteConfirmDialog({ isOpen, onClose, bookTitle, onConfirm, deleting }) {
+    if (!isOpen) return null;
+
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        onClick={onClose}
+      >
+        <div
+          className="bg-background rounded-xl p-6 max-w-md w-full mx-4 relative shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Close"
+            disabled={deleting}
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          <div className="flex items-center gap-2 mb-1">
+            <AlertCircle className="h-5 w-5 text-destructive" />
+            <h2 className="text-lg font-semibold text-foreground">Delete book</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mb-6">
+            Are you sure you want to delete <strong>"{bookTitle}"</strong>? This action cannot be undone.
+          </p>
+
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-border bg-background text-foreground hover:bg-muted transition-colors"
+              disabled={deleting}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-destructive text-background hover:opacity-90 transition-colors disabled:opacity-50"
+              disabled={deleting}
+            >
+              {deleting ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deleting...
+                </span>
+              ) : (
+                'Delete'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -261,6 +340,12 @@ export default function MyBooks() {
                 {error}
               </div>
             )}
+            {deleteError && (
+              <div className="mb-4 rounded-lg p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                {deleteError}
+              </div>
+            )}
 
             {/* Content area */}
             {loading ? (
@@ -284,16 +369,17 @@ export default function MyBooks() {
                   This feature is coming soon.
                 </p>
               </div>
-            ) : viewMode === 'grid' ? (
+) : viewMode === 'grid' ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
                 {displayBooks.map((book) => (
                    <BookCard
-                     key={book.id}
-                     book={book}
-                     onOpen={() => navigate(`/?bookId=${book.id}`)}
-                     onDelete={() => handleDelete(book.id)}
-                     onShare={() => setShareBook(book)}
-                   />
+                      key={book.id}
+                      book={book}
+                      onOpen={() => navigate(`/?bookId=${book.id}`)}
+                      onDelete={() => handleDelete(book.id)}
+                      onShare={() => setShareBook(book)}
+                      deleting={deletingBookId}
+                    />
                 ))}
               </div>
             ) : (
@@ -331,11 +417,16 @@ export default function MyBooks() {
                     </button>
                     <button
                       onClick={() => handleDelete(book.id)}
-                      className="shrink-0 p-2 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      disabled={deletingBookId === book.id}
+                      className="shrink-0 p-2 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       aria-label="Delete book"
                       title="Delete book"
                     >
-                      <X className="h-4 w-4" />
+                      {deletingBookId === book.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <X className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 ))}
@@ -344,27 +435,6 @@ export default function MyBooks() {
 
             {/* Feature cards — always visible */}
             <FeatureCards />
-
-            {/* Recently opened — only when books exist and on bookshelf/recent tabs */}
-            {(activeTab === 'bookshelf' || activeTab === 'recent') && recentlyOpened.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-foreground">Recently opened</h2>
-                  <button className="text-sm text-terracotta font-medium hover:underline">
-                    View all →
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {recentlyOpened.map((book) => (
-                    <RecentlyOpenedCard
-                      key={book.id}
-                      book={book}
-                      onOpen={() => navigate(`/?bookId=${book.id}`)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </main>
       </div>
@@ -401,6 +471,14 @@ export default function MyBooks() {
         bookId={shareBook?.id}
         bookTitle={shareBook?.title}
         onClose={() => setShareBook(null)}
+      />
+
+      <DeleteConfirmDialog
+        isOpen={!!confirmDeleteBook}
+        onClose={handleCancelDelete}
+        bookTitle={confirmDeleteBook?.title || ''}
+        onConfirm={handleConfirmDelete}
+        deleting={!!deletingBookId}
       />
     </div>
   );

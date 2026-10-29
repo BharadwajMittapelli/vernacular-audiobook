@@ -40,7 +40,7 @@ const corsDelegate = (req, callback) => {
   callback(null, {
     origin: allowedOrigin,
     credentials: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
   });
 };
