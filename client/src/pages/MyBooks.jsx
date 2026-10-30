@@ -1,17 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { BookOpen, Grid, List, Search, X, Upload, Loader2, AlertCircle } from 'lucide-react';
+import { BookOpen, Grid, List, Search, X, Upload, Loader2, AlertCircle, Download, Share2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from '../context/NavigateContext.jsx';
-import { getBooks, deleteBook, createBook } from '../services/api.js';
+import { getBooks, deleteBook, createBook, exportBookMp3, logExport } from '../services/api.js';
+import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { BookUploader } from '../components/studio/BookUploader.jsx';
-import { MyBooksSidebar } from '../components/books/MyBooksSidebar.jsx';
-import { MyBooksTopBar } from '../components/books/MyBooksTopBar.jsx';
 import { ActionCard } from '../components/books/ActionCard.jsx';
 import { BookCard } from '../components/books/BookCard.jsx';
 import { BookEmptyState } from '../components/books/BookEmptyState.jsx';
 import { FeatureCards } from '../components/books/FeatureCards.jsx';
 import { ShareDialog } from '../components/books/ShareDialog.jsx';
 
+// ... (keep constants and helper functions: TABS, BOOKSHELF_LIMIT, formatRelativeTime)
 const TABS = ['bookshelf', 'recent', 'shared', 'favorites'];
 const BOOKSHELF_LIMIT = 5;
 
@@ -28,6 +28,24 @@ function formatRelativeTime(dateStr) {
   return `${Math.floor(diffDays / 30)} months ago`;
 }
 
+function getStatusColor(status) {
+  switch (status) {
+    case 'completed': return 'bg-success/10 text-success';
+    case 'processing': return 'bg-primary/10 text-primary';
+    case 'failed': return 'bg-destructive/10 text-destructive';
+    default: return 'bg-muted text-muted-foreground';
+  }
+}
+
+function getStatusLabel(status) {
+  switch (status) {
+    case 'completed': return 'Done';
+    case 'processing': return 'Processing';
+    case 'failed': return 'Failed';
+    default: return 'Pending';
+  }
+}
+
 export default function MyBooks() {
   const { signOut } = useAuth();
   const navigate = useNavigate();
@@ -36,14 +54,20 @@ export default function MyBooks() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('bookshelf');
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState('list');
+  const [viewMode, setViewMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('ekithab-mybooks-view');
+      return saved === 'list' ? 'list' : 'grid';
+    }
+    return 'grid';
+  });
   const [showUploader, setShowUploader] = useState(false);
-  const [uploadResult, setUploadResult] = useState(null);
   const [uploadError, setUploadError] = useState(null);
   const [shareBook, setShareBook] = useState(null);
   const [deletingBookId, setDeletingBookId] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
   const [confirmDeleteBook, setConfirmDeleteBook] = useState(null);
+  const [downloadingBookId, setDownloadingBookId] = useState(null);
 
   const fetchBooks = useCallback(async () => {
     setLoading(true);
@@ -66,6 +90,12 @@ export default function MyBooks() {
     fetchBooks();
   }, [fetchBooks]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ekithab-mybooks-view', viewMode);
+    }
+  }, [viewMode]);
+
   const handleDelete = (bookId) => {
     const book = books.find((b) => b.id === bookId);
     if (book) {
@@ -75,10 +105,8 @@ export default function MyBooks() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!confirmDeleteBook || deletingBookId) return;
-
     setDeletingBookId(confirmDeleteBook.id);
     setDeleteError(null);
-
     try {
       const res = await deleteBook(confirmDeleteBook.id);
       if (res?.success) {
@@ -88,8 +116,7 @@ export default function MyBooks() {
         setDeleteError(res?.error || 'Failed to delete book');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.error || err.message || 'Failed to delete book';
-      setDeleteError(errorMsg);
+      setDeleteError(err.response?.data?.error || err.message || 'Failed to delete book');
     } finally {
       setDeletingBookId(null);
     }
@@ -100,78 +127,37 @@ export default function MyBooks() {
     setDeleteError(null);
   }, []);
 
-  const handleUpload = useCallback(() => {
-    setShowUploader(true);
-    setUploadResult(null);
-  }, []);
-
-  const handleCloseUploader = useCallback(() => {
-    setShowUploader(false);
-    setUploadResult(null);
-    setUploadError(null);
-  }, []);
-
-  const handleDocumentLoaded = useCallback(
-    async ({ title, chapters }) => {
-      setUploadError(null);
-      try {
-        const res = await createBook({ title, chapters });
-        if (!res || !res.success) {
-          throw new Error(res?.error || 'Failed to create book');
-        }
-        setShowUploader(false);
-        setUploadResult(null);
-        setBooks((prev) => [res.book, ...prev]);
-        // ponytail: brief delay before navigation to allow Supabase replication
-        await new Promise((r) => setTimeout(r, 300));
-        navigate(`/?bookId=${res.book.id}`);
-      } catch (err) {
-        // In development, show the actual error for debugging
-        const devDebug = err.response?.data?.debug;
-        const errorMsg = devDebug?.message || err.response?.data?.error || err.message || 'Failed to create book';
-        setUploadError(errorMsg);
-        if (devDebug) console.error('[MyBooks] Upload error details:', devDebug);
-      }
-    },
-    [navigate]
-  );
-
-  const filteredBooks = books.filter((book) =>
-    book.title?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Compute bookshelf/recent sets from full sorted collection
-  // Backend returns books ordered by created_at DESC, preserve that order
-  const sortedBooks = [...books].sort((a, b) => {
-    return new Date(b.created_at) - new Date(a.created_at);
-  });
-  const bookshelfIds = new Set(sortedBooks.slice(0, BOOKSHELF_LIMIT).map((b) => b.id));
-  const bookshelfBooks = sortedBooks.filter((b) => bookshelfIds.has(b.id));
-  const recentBooksFull = sortedBooks.filter((b) => !bookshelfIds.has(b.id));
-
-  // Search is applied AFTER the bookshelf/recent split
-  const searchLower = searchQuery.toLowerCase();
-  const bookshelfFiltered = bookshelfBooks.filter((book) =>
-    book.title?.toLowerCase().includes(searchLower)
-  );
-  const recentFiltered = recentBooksFull.filter((book) =>
-    book.title?.toLowerCase().includes(searchLower)
-  );
-  const sharedBooks = activeTab === 'shared' ? [] : filteredBooks;
-  const favoritesBooks = activeTab === 'favorites' ? [] : filteredBooks;
-
-  const displayBooks =
-    activeTab === 'bookshelf' ? bookshelfFiltered :
-    activeTab === 'recent' ? recentFiltered :
-    activeTab === 'shared' ? sharedBooks :
-    favoritesBooks;
-
-  const tabsWithCounts = [
-    { key: 'bookshelf', label: 'Bookshelf', count: bookshelfBooks.length },
-    { key: 'recent', label: 'Recent', count: recentBooksFull.length },
-    { key: 'shared', label: 'Shared', badge: 'Coming soon' },
-    { key: 'favorites', label: 'Favorites', badge: 'Coming soon' },
-  ];
+  const handleDownload = useCallback(async (book) => {
+    if (!book || downloadingBookId) return;
+    setDownloadingBookId(book.id);
+    try {
+      const res = await exportBookMp3(book.id);
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      const contentDisp = res.headers['content-disposition'] || '';
+      const match = contentDisp.match(/filename\*?=['"]?(?:UTF-8'')?([^"';\s]+)['"]?/);
+      const filename = match ? decodeURIComponent(match[1]) : `${book.title || 'audiobook'}.mp3`;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      const ext = res.data.type === 'audio/mpeg' || res.data.type === 'audio/mp3' ? 'mp3' : 'wav';
+      logExport({
+        bookId: book.id,
+        bookTitle: book.title,
+        bookCoverUrl: book.cover_url,
+        fileName: filename,
+        fileFormat: ext,
+        fileSize: res.data.size,
+      }).catch((err) => console.error('[MyBooks] Failed to log export:', err));
+    } catch (err) {
+      console.error('[MyBooks] Export failed:', err);
+    } finally {
+      setDownloadingBookId(null);
+    }
+  }, [downloadingBookId]);
 
   function DeleteConfirmDialog({ isOpen, onClose, bookTitle, onConfirm, deleting }) {
     if (!isOpen) return null;
@@ -230,249 +216,181 @@ export default function MyBooks() {
     );
   }
 
+  const handleUpload = useCallback(() => {
+    setShowUploader(true);
+    setUploadError(null);
+  }, []);
+
+  const handleCloseUploader = useCallback(() => {
+    setShowUploader(false);
+    setUploadError(null);
+  }, []);
+
+  const handleDocumentLoaded = useCallback(
+    async ({ title, chapters }) => {
+      setUploadError(null);
+      try {
+        const res = await createBook({ title, chapters });
+        if (!res || !res.success) throw new Error(res?.error || 'Failed to create book');
+        setShowUploader(false);
+        setBooks((prev) => [res.book, ...prev]);
+        await new Promise((r) => setTimeout(r, 300));
+        navigate(`/?bookId=${res.book.id}`);
+      } catch (err) {
+        setUploadError(err.response?.data?.error || err.message || 'Failed to create book');
+      }
+    },
+    [navigate]
+  );
+
+  const filteredBooks = books.filter((book) =>
+    (book.title || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const sortedBooks = [...books].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const bookshelfIds = new Set(sortedBooks.slice(0, BOOKSHELF_LIMIT).map((b) => b.id));
+  const bookshelfBooks = sortedBooks.filter((b) => bookshelfIds.has(b.id));
+  const recentBooksFull = sortedBooks.filter((b) => !bookshelfIds.has(b.id));
+  
+  const displayBooks = activeTab === 'bookshelf' ? bookshelfBooks.filter(b => (b.title || '').toLowerCase().includes(searchQuery.toLowerCase())) :
+                      activeTab === 'recent' ? recentBooksFull.filter(b => (b.title || '').toLowerCase().includes(searchQuery.toLowerCase())) :
+                      filteredBooks;
+
+  const tabsWithCounts = [
+    { key: 'bookshelf', label: 'Bookshelf', count: bookshelfBooks.length },
+    { key: 'recent', label: 'Recent', count: recentBooksFull.length },
+    { key: 'shared', label: 'Shared' },
+    { key: 'favorites', label: 'Favorites' },
+  ];
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <MyBooksSidebar activeItem="my-books" onNavClick={navigate} activePath={window.location.pathname} />
+    <AppLayout activePath="/my-books" onNavClick={navigate}>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-semibold text-foreground">My Books</h1>
+          <p className="text-muted-foreground mt-1">Manage your uploaded books.</p>
+        </div>
 
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        <MyBooksTopBar onUploadBook={handleUpload} onLogout={() => { signOut(); window.location.href = '/'; }} />
-
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto px-6 py-8">
-            {/* Page heading */}
-            <div className="mb-8">
-              <h1 className="text-3xl font-semibold text-foreground">My Books</h1>
-              <p className="text-muted-foreground mt-1">
-                Manage your uploaded books and continue listening.
-              </p>
-            </div>
-
-            {/* Action cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-              <ActionCard
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+            <ActionCard
                 icon={<BookOpen className="h-6 w-6" />}
                 title="Create an Audiobook"
-                description="Upload a document and generate natural-sounding audio in your language."
-                onClick={handleUpload}
-              />
-              <ActionCard
+                description="Upload a document and generate audio."
+                onClick={() => setShowUploader(true)}
+            />
+            <ActionCard
                 icon={<Upload className="h-6 w-6" />}
-                title="Publish to Ekithab Reader"
-                description="Share your audiobook with listeners and make it accessible everywhere."
+                title="Publish"
+                description="Share your audiobook."
                 disabled={books.length === 0}
-                onShare={() => {
-                  const target = books.find((b) => b.status === 'completed') || books[0];
-                  if (target) setShareBook(target);
-                }}
-              />
+                onShare={() => setShareBook(books.find((b) => b.status === 'completed') || books[0])}
+            />
+        </div>
+
+        <div className="flex items-center gap-6 border-b border-border mb-6">
+          {tabsWithCounts.map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`pb-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === key ? 'border-terracotta text-terracotta' : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span>{label}</span>
+              {count !== undefined && <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">{count}</span>}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex-1 min-w-[200px] relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search books and series..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+            />
+          </div>
+          <div className="flex items-center border border-border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 transition-colors ${
+                viewMode === 'grid' ? 'bg-terracotta/10 text-terracotta' : 'hover:bg-muted text-muted-foreground'
+              }`}
+              aria-label="Grid view"
+              title="Grid view"
+            >
+              <Grid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 transition-colors border-l border-border ${
+                viewMode === 'list' ? 'bg-terracotta/10 text-terracotta' : 'hover:bg-muted text-muted-foreground'
+              }`}
+              aria-label="List view"
+              title="List view"
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {loading ? <div className="text-center py-20">Loading...</div> : displayBooks.length === 0 ? <BookEmptyState onUpload={() => setShowUploader(true)} /> : viewMode === 'grid' ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {displayBooks.map(b => <BookCard key={b.id} book={b} onOpen={() => navigate(`/?bookId=${b.id}`)} onDelete={() => handleDelete(b.id)} onShare={() => setShareBook(b)} deleting={deletingBookId} />)}
             </div>
-
-            {/* Tab bar */}
-            <div className="flex items-center gap-6 border-b border-border mb-6">
-              {tabsWithCounts.map(({ key, label, count, badge }) => (
-                <button
-                  key={key}
-                  onClick={() => setActiveTab(key)}
-                  className={`pb-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
-                    activeTab === key
-                      ? 'border-terracotta text-terracotta'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <span>{label}</span>
-                  {count !== undefined && (
-                    <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">
-                      {count}
-                    </span>
-                  )}
-                  {badge && (
-                    <span className="text-[10px] bg-terracotta/10 text-terracotta px-1.5 py-0.5 rounded-full">
-                      {badge}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {/* Search and filters row */}
-            <div className="flex items-center gap-3 mb-6 flex-wrap">
-              <div className="flex-1 min-w-[200px] relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search books and series..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
-                />
-              </div>
-              <div className="flex items-center border border-border rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`p-2 transition-colors ${
-                    viewMode === 'grid'
-                      ? 'bg-terracotta/10 text-terracotta'
-                      : 'hover:bg-muted text-muted-foreground'
-                  }`}
-                  aria-label="Grid view"
-                  title="Grid view"
-                >
-                  <Grid className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-2 transition-colors border-l border-border ${
-                    viewMode === 'list'
-                      ? 'bg-terracotta/10 text-terracotta'
-                      : 'hover:bg-muted text-muted-foreground'
-                  }`}
-                  aria-label="List view"
-                  title="List view"
-                >
-                  <List className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Error banner */}
-            {error && (
-              <div className="mb-4 rounded-lg p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                {error}
-              </div>
-            )}
-            {deleteError && (
-              <div className="mb-4 rounded-lg p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                {deleteError}
-              </div>
-            )}
-
-            {/* Content area */}
-            {loading ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm text-muted-foreground">Loading books…</span>
-                </div>
-              </div>
-            ) : displayBooks.length === 0 && activeTab !== 'shared' && activeTab !== 'favorites' ? (
-              <BookEmptyState onUpload={handleUpload} />
-            ) : activeTab === 'shared' || activeTab === 'favorites' ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                  <BookOpen className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-base font-semibold text-foreground">
-                  {activeTab === 'shared' ? 'Shared books' : 'Favorite books'}
-                </h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  This feature is coming soon.
-                </p>
-              </div>
-) : viewMode === 'grid' ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-8">
-                {displayBooks.map((book) => (
-                   <BookCard
-                      key={book.id}
-                      book={book}
-                      onOpen={() => navigate(`/?bookId=${book.id}`)}
-                      onDelete={() => handleDelete(book.id)}
-                      onShare={() => setShareBook(book)}
-                      deleting={deletingBookId}
-                    />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-3 mb-8">
-                {displayBooks.map((book) => (
-                  <div
-                    key={book.id}
-                    className="flex items-center gap-4 bg-card border border-border rounded-xl p-4 hover:shadow-md transition-shadow"
-                  >
+        ) : (
+            <div className="space-y-3">
+                {displayBooks.map(b => (
+                  <div key={b.id} className="flex items-center gap-4 bg-card border border-border rounded-xl p-4 hover:shadow-md transition-shadow">
                     <div className="w-12 h-16 shrink-0 rounded-lg overflow-hidden bg-terracotta/10 flex items-center justify-center text-terracotta font-bold text-sm">
-                      {book.cover_url ? (
-                        <img src={book.cover_url} alt={book.title} className="w-full h-full object-cover" />
-                      ) : (
-                        (book.title || '').slice(0, 2).toUpperCase()
-                      )}
+                      {b.cover_url ? <img src={b.cover_url} alt={b.title} className="w-full h-full object-cover" /> : (b.title || '').slice(0,2).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-sm font-semibold text-foreground truncate">{book.title}</h3>
+                      <h3 className="text-sm font-semibold text-foreground truncate">{b.title}</h3>
                       <p className="text-xs text-muted-foreground">
-                        {book.total_chapters} chapter{book.total_chapters !== 1 ? 's' : ''}
-                        {book.status && ` · ${book.status}`}
+                        {b.total_chapters} chapter{b.total_chapters !== 1 ? 's' : ''} · {getStatusLabel(b.status)}
                       </p>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full mt-1 inline-block ${getStatusColor(b.status)}`}>
+                        {getStatusLabel(b.status)}
+                      </span>
                     </div>
-                    <button
-                      onClick={() => navigate(`/?bookId=${book.id}`)}
-                      className="shrink-0 bg-foreground text-background text-xs font-medium px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-                    >
-                      Open
+                    <button onClick={() => navigate(`/?bookId=${b.id}`)} className="shrink-0 bg-foreground text-background text-xs font-medium px-4 py-2 rounded-lg hover:opacity-90 transition-opacity">Open</button>
+                    {b.status === 'completed' && (
+                      <button onClick={() => handleDownload(b)} disabled={downloadingBookId === b.id} className="shrink-0 p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50" aria-label="Download MP3" title="Download MP3">
+                        {downloadingBookId === b.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      </button>
+                    )}
+                    <button onClick={() => setShareBook(b)} className="shrink-0 p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" aria-label="Share" title="Share">
+                      <Share2 className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={() => setShareBook(book)}
-                      className="shrink-0 border border-border text-xs font-medium px-4 py-2 rounded-lg hover:bg-muted transition-colors"
-                    >
-                      Share
-                    </button>
-                    <button
-                      onClick={() => handleDelete(book.id)}
-                      disabled={deletingBookId === book.id}
-                      className="shrink-0 p-2 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      aria-label="Delete book"
-                      title="Delete book"
-                    >
-                      {deletingBookId === book.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <X className="h-4 w-4" />
-                      )}
+                    <button onClick={() => handleDelete(b.id)} disabled={deletingBookId === b.id} className="shrink-0 p-2 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50" aria-label="Delete book" title="Delete book">
+                      {deletingBookId === b.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
                     </button>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* Feature cards — always visible */}
-            <FeatureCards />
-          </div>
-        </main>
+            </div>
+        )}
       </div>
 
-      {/* Upload modal */}
-      {showUploader && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={handleCloseUploader}
-        >
-          <div
-            className="bg-background rounded-xl p-8 max-w-xl w-full mx-4 relative shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={handleCloseUploader}
-              className="absolute top-4 right-4 p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            {uploadError && (
-              <div className="mb-4 rounded-lg p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                {uploadError}
-              </div>
-            )}
-            <BookUploader onDocumentLoaded={handleDocumentLoaded} />
-          </div>
-        </div>
-      )}
-
-      <ShareDialog
-        isOpen={!!shareBook}
-        bookId={shareBook?.id}
-        bookTitle={shareBook?.title}
-        onClose={() => setShareBook(null)}
-      />
-
+       {showUploader && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={handleCloseUploader}>
+           <div className="bg-background rounded-xl p-8 max-w-xl w-full mx-4 relative shadow-xl" onClick={(e) => e.stopPropagation()}>
+             <button onClick={handleCloseUploader} className="absolute top-4 right-4 p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" aria-label="Close">
+               <X className="h-5 w-5" />
+             </button>
+             {uploadError && (
+               <div className="mb-4 rounded-lg p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                 {uploadError}
+               </div>
+             )}
+             <BookUploader onDocumentLoaded={handleDocumentLoaded} />
+           </div>
+         </div>
+       )}
+       <ShareDialog isOpen={!!shareBook} bookId={shareBook?.id} bookTitle={shareBook?.title} onClose={() => setShareBook(null)} />
       <DeleteConfirmDialog
         isOpen={!!confirmDeleteBook}
         onClose={handleCancelDelete}
@@ -480,6 +398,6 @@ export default function MyBooks() {
         onConfirm={handleConfirmDelete}
         deleting={!!deletingBookId}
       />
-    </div>
+    </AppLayout>
   );
 }
