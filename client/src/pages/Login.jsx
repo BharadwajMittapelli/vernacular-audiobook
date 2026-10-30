@@ -17,7 +17,7 @@ export default function Login() {
     if (error) {
       setError(error.message || 'Login failed');
     } else {
-      window.location.href = '/my-books';
+      window.location.href = '/home';
     }
     setSubmitting(false);
   };

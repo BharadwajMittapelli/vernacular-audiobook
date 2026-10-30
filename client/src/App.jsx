@@ -7,8 +7,10 @@ import MyBooks from './pages/MyBooks.jsx';
 import PublicListener from './pages/PublicListener.jsx';
 import Settings from './pages/Settings.jsx';
 import UpdatePassword from './pages/UpdatePassword.jsx';
-import AudioLibrary from './pages/AudioLibrary.jsx';
+import Recent from './pages/Recent.jsx';
 import LandingPage from './pages/LandingPage.jsx';
+import Home from './pages/Home.jsx';
+import AudioLibrary from './pages/AudioLibrary.jsx';
 
 function App() {
   const { session, loading } = useAuth();
@@ -105,12 +107,24 @@ function App() {
           <AudioLibrary />
         </NavigateContext.Provider>
       );
-    case '/':
+    case '/recent':
       return (
         <NavigateContext.Provider value={navigate}>
-          <LandingPage />
+          <Recent />
         </NavigateContext.Provider>
       );
+case '/':
+    return (
+      <NavigateContext.Provider value={navigate}>
+        <LandingPage />
+      </NavigateContext.Provider>
+    );
+    case '/home':
+    return (
+      <NavigateContext.Provider value={navigate}>
+        <Home />
+      </NavigateContext.Provider>
+    );
     default:
       return (
         <NavigateContext.Provider value={navigate}>

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 import { AuthProvider } from './context/AuthContext.jsx';
+import { AudioProvider } from './context/AudioContext.jsx';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -44,9 +45,11 @@ class ErrorBoundary extends React.Component {
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AuthProvider>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
+      <AudioProvider>
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      </AudioProvider>
     </AuthProvider>
   </React.StrictMode>
 );

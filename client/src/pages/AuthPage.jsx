@@ -40,7 +40,7 @@ export default function AuthPage() {
         setError(msg);
       }
     } else {
-      navigate('/my-books');
+      navigate('/home');
     }
     setSubmitting(false);
   };

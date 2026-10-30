@@ -23,7 +23,7 @@ export default function Register() {
     if (error) {
       setError(error.message || 'Registration failed');
     } else {
-      window.location.href = '/my-books';
+      window.location.href = '/home';
     }
     setSubmitting(false);
   };

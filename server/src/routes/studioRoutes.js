@@ -52,6 +52,26 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /last-opened-book — get the most recently opened book for the user
+router.get('/last-opened-book', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('books')
+      .select('id, title, cover_url, total_chapters, completed_chapters, status, created_at, last_opened_at, language')
+      .eq('user_id', req.user.id)
+      .not('last_opened_at', 'is', null)
+      .order('last_opened_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    res.json({ success: true, book: data || null });
+  } catch (error) {
+    console.error('GET /studio/last-opened-book error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // POST /spatial-preview — AI-driven spatial audio preview
 router.post('/spatial-preview', async (req, res) => {
   const { chapterText, bookId } = req.body;

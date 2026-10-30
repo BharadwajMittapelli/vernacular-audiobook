@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sidebar } from './Sidebar.jsx';
+import { ChapterListPanel } from './ChapterListPanel.jsx';
 import { TopBar } from './TopBar.jsx';
 
 export function MainLayout({
@@ -16,18 +16,23 @@ export function MainLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar
-        book={book}
-        activeChapterIdx={activeChapterIdx}
-        onChapterSelect={(idx) => {
-          onChapterSelect(idx);
-          setMobileMenuOpen(false);
-        }}
-        onNavClick={onNavClick}
-        activePath={activePath}
-        isMobileOpen={mobileMenuOpen}
-        onCloseMobile={() => setMobileMenuOpen(false)}
-      />
+      <div
+        className={`
+          fixed top-0 left-0 z-50 h-full w-64
+          bg-sidebar border-r border-border
+          transition-transform duration-200 ease-in-out
+          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0 lg:static lg:z-0
+        `}
+        role="navigation"
+        aria-label="Chapter navigation"
+      >
+        <ChapterListPanel
+          book={book}
+          activeChapterIdx={activeChapterIdx}
+          onChapterSelect={onChapterSelect}
+        />
+      </div>
 
       <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
         <TopBar

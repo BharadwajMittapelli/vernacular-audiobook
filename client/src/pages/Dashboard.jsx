@@ -6,7 +6,7 @@ import { ReadAlongPlayer } from '../components/player/ReadAlongPlayer.jsx';
 
 import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
-import { MainLayout } from '../components/layout/MainLayout.jsx';
+import { StudioLayout } from '../components/layout/StudioLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
 import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
@@ -845,7 +845,7 @@ function Dashboard() {
 
   return (
     <>
-      <MainLayout
+      <StudioLayout
         book={book}
         activeChapterIdx={activeIdx}
         chapter={chapter}
@@ -872,7 +872,7 @@ function Dashboard() {
         }
       >
         {studioContent}
-      </MainLayout>
+      </StudioLayout>
       {configModal}
     </>
   );
