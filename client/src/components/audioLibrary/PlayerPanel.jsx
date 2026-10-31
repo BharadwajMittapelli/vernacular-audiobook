@@ -34,14 +34,19 @@ export function PlayerPanel({
   const flag = LANGUAGE_FLAG[lang] || '🇮🇳';
   const langName = LANGUAGE_NAME[lang] || 'English';
   const voiceName = activeChapter.voiceName || DEFAULT_VOICE_BY_LANG[lang] || 'Kaveri';
+  const durationSec = Math.max(1, Math.floor(progress.duration));
+  const currentTimeSec = Math.min(progress.currentTime, durationSec);
+  const progressPct = durationSec > 0 && Number.isFinite(currentTimeSec)
+    ? Math.min(100, Math.max(0, (currentTimeSec / durationSec) * 100))
+    : 0;
   const durationStr = formatDuration(activeChapter.durationSeconds);
-  const currentStr = formatDuration(Math.floor(progress.currentTime));
+  const currentStr = formatDuration(Math.floor(currentTimeSec));
 
   return (
-    <div>
+    <div className="pb-4">
       {/* Cover */}
-      <div className="flex flex-col items-center text-center mb-6 relative">
-        <div className="w-52 h-52 rounded-xl overflow-hidden bg-muted shadow-xl mb-3 relative">
+      <div className="flex flex-col items-center text-center mb-3 relative">
+        <div className="w-44 h-44 rounded-xl overflow-hidden bg-muted shadow-xl mb-4 relative">
           {activeChapter.coverUrl ? (
             <img
               src={activeChapter.coverUrl}
@@ -55,29 +60,29 @@ export function PlayerPanel({
           )}
           <button
             onClick={onFavoriteToggle}
-            className={`absolute top-4 right-4 p-2 rounded-full bg-background/90 backdrop-blur-sm hover:bg-background transition-colors shadow-md ${
+            className={`absolute top-4 right-4 p-1.5 rounded-full bg-background/90 backdrop-blur-sm hover:bg-background transition-colors shadow-md ${
               isFavorite ? 'text-terracotta' : 'text-muted-foreground hover:text-terracotta'
             }`}
             aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
             title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
           >
-            <Heart className={`h-5 w-5 ${isFavorite ? 'fill-current' : ''}`} />
+            <Heart className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
           </button>
         </div>
-        <h2 className="font-serif text-xl font-semibold text-foreground leading-tight px-2 max-w-full">
+        <h2 className="font-serif text-lg font-semibold text-foreground leading-tight px-2 max-w-full">
           {activeChapter.chapterTitle}
         </h2>
         <p className="text-sm text-muted-foreground mt-1">{activeChapter.bookTitle}</p>
-        <p className="text-xs text-muted-foreground mt-1">
+        <p className="text-xs text-muted-foreground mt-0.5">
           Chapter {String(activeChapter.sequenceNumber).padStart(2, '0')} • {durationStr}
         </p>
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-center gap-4 mb-6">
+      <div className="flex items-center justify-center gap-4 mb-4">
         <button
           onClick={() => onSkip(-10)}
-          className="p-2.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Skip back 10 seconds"
           title="Skip back 10s"
         >
@@ -86,7 +91,7 @@ export function PlayerPanel({
 
         <button
           onClick={() => onPlayPause(!isPlaying)}
-          className="w-16 h-16 rounded-full bg-terracotta text-white flex items-center justify-center hover:opacity-90 transition-opacity shadow-lg"
+          className="w-14 h-14 rounded-full bg-terracotta text-white flex items-center justify-center hover:opacity-90 transition-opacity shadow-lg"
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying
@@ -97,7 +102,7 @@ export function PlayerPanel({
 
         <button
           onClick={() => onSkip(10)}
-          className="p-2.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          className="p-2 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           aria-label="Skip forward 10 seconds"
           title="Skip forward 10s"
         >
@@ -106,14 +111,21 @@ export function PlayerPanel({
       </div>
 
       {/* Timeline */}
-      <div className="mb-6">
+      <div className="mb-4">
         <input
           type="range"
           min={0}
-          max={Math.max(1, Math.floor(progress.duration))}
-          value={Math.floor(progress.currentTime)}
+          max={durationSec}
+          value={currentTimeSec}
           onChange={(e) => onSeek(Number(e.target.value))}
-          className="w-full h-1.5 accent-terracotta cursor-pointer appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-terracotta [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-md [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-terracotta [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white"
+          style={{
+            background: `linear-gradient(to right, hsl(var(--terracotta)) ${progressPct}%, hsl(var(--border)) ${progressPct}%)`,
+          }}
+          className="w-full h-[5px] accent-terracotta cursor-pointer appearance-none rounded-full
+            [&::-webkit-slider-runnable-track]:h-[5px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-transparent
+            [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-terracotta [&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:mt-[-5.5px]
+            [&::-moz-range-track]:h-[5px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-transparent
+            [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-terracotta [&::-moz-range-thumb]:shadow-sm [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:mt-[-5.5px]"
           aria-label="Seek"
         />
         <div className="flex justify-between text-xs text-muted-foreground mt-1.5 font-medium">
@@ -123,11 +135,11 @@ export function PlayerPanel({
       </div>
 
       {/* Metadata */}
-      <div className="space-y-3 mb-6 p-4 rounded-xl bg-muted/50 border border-border">
+      <div className="space-y-2 mb-4 p-4 rounded-xl bg-muted/50 border border-border">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Language</span>
           <span className="text-foreground flex items-center gap-1.5">
-            <span className="text-base">{flag}</span>
+            <span className="text-sm">{flag}</span>
             <span className="font-medium">{langName}</span>
           </span>
         </div>

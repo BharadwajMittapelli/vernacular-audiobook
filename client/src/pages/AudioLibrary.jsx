@@ -9,7 +9,6 @@ import { FavoritesView } from '../components/audioLibrary/FavoritesView.jsx';
 import { LibraryTopBar } from '../components/audioLibrary/LibraryTopBar.jsx';
 import { AudioTable } from '../components/audioLibrary/AudioTable.jsx';
 import { PlayerPanel } from '../components/audioLibrary/PlayerPanel.jsx';
-import { ContinueListening } from '../components/audioLibrary/ContinueListening.jsx';
 import { DEFAULT_VOICE_BY_LANG, LANGUAGE_FLAG, LANGUAGE_NAME } from '../components/audioLibrary/AudioRow.jsx';
 import { useAudio } from '../context/AudioContext.jsx';
 
@@ -253,14 +252,7 @@ export default function AudioLibrary() {
                   onRetry={loadPlaybackHistory}
                   isFavorite={(id) => favorites.has(id)}
                   onFavoriteToggle={toggleFavorite}
-                />
-                <ContinueListening
-                  history={items}
-                  activeChapter={globalActiveChapter}
-                  currentTime={currentTime}
-                  duration={duration}
-                  onPlay={playChapter}
-                  onViewAll={() => setActiveTab('all')}
+                  selectedChapterId={selectedChapterId}
                 />
               </>
             ) : activeTab === 'by-book' ? (
@@ -274,14 +266,6 @@ export default function AudioLibrary() {
                   onFavoriteToggle={toggleFavorite}
                   loading={byBookLoading}
                 />
-                <ContinueListening
-                  history={items}
-                  activeChapter={globalActiveChapter}
-                  currentTime={currentTime}
-                  duration={duration}
-                  onPlay={playChapter}
-                  onViewAll={() => setActiveTab('all')}
-                />
               </>
             ) : activeTab === 'favorites' ? (
               <FavoritesView
@@ -292,6 +276,7 @@ export default function AudioLibrary() {
                 onSelect={handleSelectChapter}
                 onFavoriteToggle={toggleFavorite}
                 loading={!favoritesLoaded}
+                selectedChapterId={selectedChapterId}
               />
             ) : activeTab === 'downloads' ? (
               <DownloadsView onDownloadAgain={exportBookMp3} />
