@@ -1,12 +1,8 @@
 import React from 'react';
-import { Play } from 'lucide-react';
+import { Play, ChevronRight } from 'lucide-react';
 
-const PROGRESS_PCT = [0.30, 0.60, 0.80];
-
-export function ContinueListening({ items, onPlay }) {
-  // ponytail: guard against non-array `items` — `for...of` on a number throws
-  // "number N is not iterable" and bubbles up to the ErrorBoundary.
-  const safeItems = Array.isArray(items) ? items : [];
+export function ContinueListening({ history, activeChapter, currentTime, duration, onPlay, onViewAll }) {
+  const safeItems = Array.isArray(history) ? history : [];
   const booksMap = new Map();
   for (const item of safeItems) {
     if (!booksMap.has(item.bookId)) {
@@ -14,7 +10,7 @@ export function ContinueListening({ items, onPlay }) {
         id: item.bookId,
         title: item.bookTitle,
         coverUrl: item.coverUrl,
-        lastOpenedAt: item.bookLastOpenedAt,
+        lastOpenedAt: item.bookLastOpenedAt || item.createdAt,
         chapters: [],
       });
     }
@@ -31,17 +27,25 @@ export function ContinueListening({ items, onPlay }) {
     <div className="mt-8">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Continue Listening</h2>
-        <button className="text-sm text-terracotta font-medium hover:underline">
-          View all →
-        </button>
+        {onViewAll && (
+          <button
+            onClick={onViewAll}
+            className="text-sm text-terracotta hover:underline flex items-center gap-1"
+          >
+            View all
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-2">
-        {sortedBooks.map((book, idx) => {
+        {sortedBooks.map((book) => {
           const latestChapter = book.chapters[0];
-          const progressPct = PROGRESS_PCT[idx] || 0.30;
-          const totalSec = latestChapter.durationSeconds || 0;
-          const currentSec = Math.floor(totalSec * progressPct);
+          const isActive = activeChapter?.chapterId === latestChapter.chapterId;
+          const totalSec = isActive && duration ? duration : (latestChapter.durationSeconds || 0);
+          const currentSec = isActive ? Math.floor(currentTime) : 0;
+          const progressPct = totalSec > 0 ? Math.min(1, currentSec / totalSec) : 0;
+
           const currentStr = formatDuration(currentSec);
           const totalStr = formatDuration(totalSec);
 
@@ -66,21 +70,23 @@ export function ContinueListening({ items, onPlay }) {
                 </div>
               </div>
               <p className="text-sm font-semibold text-foreground truncate">{book.title}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Chapter {String(latestChapter.sequenceNumber).padStart(2, '0')} • {latestChapter.chapterTitle}
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                Chapter {String(latestChapter.sequenceNumber || 1).padStart(2, '0')} • {latestChapter.chapterTitle}
               </p>
-              <div className="mt-2">
-                <div className="h-1 rounded-full bg-border overflow-hidden">
-                  <div
-                    className="h-full bg-terracotta rounded-full"
-                    style={{ width: `${progressPct * 100}%` }}
-                  />
+              {isActive && totalSec > 0 && (
+                <div className="mt-2">
+                  <div className="h-1 rounded-full bg-border overflow-hidden">
+                    <div
+                      className="h-full bg-terracotta rounded-full transition-all duration-300"
+                      style={{ width: `${progressPct * 100}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>{currentStr}</span>
+                    <span>{totalStr}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                  <span>{currentStr}</span>
-                  <span>{totalStr}</span>
-                </div>
-              </div>
+              )}
             </div>
           );
         })}

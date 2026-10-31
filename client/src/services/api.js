@@ -175,12 +175,36 @@ export function logExport(download) {
   return api.post('/api/library/downloads/log', download).then((res) => res.data);
 }
 
+export function logPlayback({ bookId, chapterId }) {
+  return api.post('/api/library/playback/log', { bookId, chapterId }).then((res) => res.data);
+}
+
+export function getPlaybackHistory() {
+  return api.get('/api/library/playback/history').then((res) => res.data);
+}
+
 export function getDownloads() {
   return api.get('/api/library/downloads').then((res) => res.data);
 }
 
 export function deleteDownload(id) {
   return api.delete(`/api/library/downloads/${id}`).then((res) => res.data);
+}
+
+export function getByBook() {
+  return api.get('/api/library/by-book').then((res) => res.data);
+}
+
+export function getFavorites() {
+  return api.get('/api/library/favorites').then((res) => res.data);
+}
+
+export function addFavorite({ bookId, chapterId }) {
+  return api.post('/api/library/favorites', { bookId, chapterId }).then((res) => res.data);
+}
+
+export function removeFavorite(chapterId) {
+  return api.delete(`/api/library/favorites/${chapterId}`).then((res) => res.data);
 }
 
 export default api;

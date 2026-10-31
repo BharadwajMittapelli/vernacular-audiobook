@@ -8,10 +8,11 @@ import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { StudioLayout } from '../components/layout/StudioLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
-import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport } from '../services/api.js';
+import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport, logPlayback } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
+import { useAudio } from '../context/AudioContext.jsx';
 import { Button } from '../components/ui/button.jsx';
 import { Zap, FileText, BookOpen, Info, Download, ChevronDown } from 'lucide-react';
 
@@ -160,6 +161,7 @@ function Dashboard() {
   const [bookStatus, setBookStatus] = React.useState(null);
   const pollIntervalRef = React.useRef(null);
   const [isSpatialEnabled, setIsSpatialEnabled] = React.useState(false);
+  const hasLoggedPlaybackRef = React.useRef(false);
 
   // Initialize from ?bookId query parameter on mount
   React.useEffect(() => {
@@ -216,6 +218,7 @@ function Dashboard() {
         if (cancelled) return;
         setIsLoadingBook(false);
         const frontendBook = {
+          id: res.book.id,
           title: res.book.title,
           chapters: chaptersWithText,
           coverUrl: res.book.cover_url,
@@ -292,7 +295,36 @@ function Dashboard() {
   const chapter = book ? book.chapters[activeIdx] : null;
   const alignment = audioResult?.alignment || [];
   const audioUrl = audioResult?.audioUrl || null;
-  const player = useAudioPlayer(audioUrl, alignment);
+  const { isPlaying: sharedIsPlaying, currentTime: sharedCurrentTime, duration: sharedDuration, playbackRate: sharedPlaybackRate } = useAudio();
+
+  React.useEffect(() => {
+    hasLoggedPlaybackRef.current = false;
+  }, [chapter?.chapterId, book?.id]);
+
+  const player = useAudioPlayer(audioUrl, alignment, {
+    chapterId: chapter?.chapterId,
+    bookId: book?.id || currentBookIdRef.current,
+    onPlaybackVerified: (chapterId, bookId) => {
+      // Only log playback once per chapter session — coordinate with AudioLibrary path
+      if (!hasLoggedPlaybackRef.current && bookId && chapterId) {
+        hasLoggedPlaybackRef.current = true;
+        let attempts = 0;
+        const maxAttempts = 3;
+        const attemptLog = () => {
+          logPlayback({ bookId, chapterId })
+            .catch((err) => {
+              attempts++;
+              if (attempts < maxAttempts) {
+                setTimeout(attemptLog, 500 * Math.pow(2, attempts - 1));
+              } else {
+                console.error('Failed to log playback after retries:', err);
+              }
+            });
+        };
+        attemptLog();
+      }
+    },
+  });
 
   React.useEffect(() => {
     setSpeed(player.playbackRate);
@@ -500,12 +532,12 @@ function Dashboard() {
     }
   };
   const onRewind10 = () => {
-    if (!player.duration) return;
-    player.seek(Math.max(0, player.currentTime - 10));
+    if (!sharedDuration) return;
+    seek(Math.max(0, sharedCurrentTime - 10));
   };
   const onForward10 = () => {
-    if (!player.duration) return;
-    player.seek(Math.min(player.duration, player.currentTime + 10));
+    if (!sharedDuration) return;
+    seek(Math.min(sharedDuration, sharedCurrentTime + 10));
   };
 
   const configModal = (
@@ -703,7 +735,7 @@ function Dashboard() {
                 max={2}
                 step={0.1}
                 value={[speed]}
-                onValueChange={([v]) => { setSpeed(v); player.setPlaybackRate(v); }}
+                onValueChange={([v]) => setSpeed(v)}
                 className="terracotta-slider"
               />
             </div>
@@ -855,10 +887,10 @@ function Dashboard() {
         bottomBar={
           <BottomPlayer
             audioUrl={audioUrl}
-            isPlaying={player.isPlaying}
-            currentTime={player.currentTime}
-            duration={player.duration}
-            playbackRate={player.playbackRate}
+            isPlaying={sharedIsPlaying}
+            currentTime={sharedCurrentTime}
+            duration={sharedDuration}
+            playbackRate={sharedPlaybackRate}
             currentChapterTitle={chapter?.title}
             bookTitle={book?.title}
             bookCoverUrl={book?.coverUrl}
@@ -866,8 +898,8 @@ function Dashboard() {
             onPause={onPause}
             onRewind10={onRewind10}
             onForward10={onForward10}
-            onSeek={(seconds) => player.seek(seconds)}
-            onRateChange={(rate) => { setSpeed(rate); player.setPlaybackRate(rate); }}
+            onSeek={(seconds) => seek(seconds)}
+            onRateChange={(rate) => { setSpeed(rate); setPlaybackRate(rate); }}
           />
         }
       >

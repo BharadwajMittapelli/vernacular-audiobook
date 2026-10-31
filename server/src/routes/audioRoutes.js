@@ -31,13 +31,20 @@ router.get('/:chapterId', async (req, res) => {
   try {
     const { chapterId } = req.params;
 
-    const { data, error } = await supabase
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chapterId);
+
+    let query = supabase
       .from('audio_generations')
-        .select('audio_url, audio_path, duration, alignment, language, chapter_id')
-        .eq('chapter_id', chapterId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .select('audio_url, audio_path, duration, alignment, language, chapter_id, chapter_uuid')
+      .order('created_at', { ascending: false });
+
+    if (isUuid) {
+      query = query.or(`chapter_id.eq.${chapterId},chapter_uuid.eq.${chapterId}`);
+    } else {
+      query = query.eq('chapter_id', chapterId);
+    }
+
+    const { data, error } = await query.limit(1).single();
 
     if (error || !data) {
       return res.status(404).json({ success: false, error: 'Chapter not found' });
@@ -120,6 +127,9 @@ router.post(
       const userId = req.user?.id || '00000000-0000-0000-0000-000000000001';
       const creditsUsed = req.creditsUsed || 0;
 
+      // Determine if chapterId is a UUID; if so, populate chapter_uuid for FK consistency
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chapterId);
+
       // Insert a 'processing' placeholder BEFORE synthesis so a concurrent
       // request with the same Idempotency-Key hits the unique constraint and
       // polls instead of duplicating expensive TTS work.
@@ -129,6 +139,7 @@ router.post(
           id: generationId,
           user_id: userId,
           chapter_id: chapterId,
+          chapter_uuid: isUuid ? chapterId : null,
           language,
           idempotency_key: idempotencyKey,
           status: 'processing',
@@ -144,7 +155,7 @@ router.post(
 
         const { data: raced } = await supabase
           .from('audio_generations')
-          .select('id, status, audio_url, audio_path, duration, alignment')
+          .select('id, status, audio_url, audio_path, duration, alignment, chapter_uuid')
           .eq('idempotency_key', idempotencyKey)
           .maybeSingle();
 
@@ -182,7 +193,7 @@ router.post(
 
             const { data: record, error: pollError } = await supabase
               .from('audio_generations')
-              .select('audio_url, audio_path, duration, alignment, status')
+              .select('audio_url, audio_path, duration, alignment, status, chapter_uuid')
               .eq('idempotency_key', idempotencyKey)
               .limit(1)
               .single();
@@ -386,6 +397,7 @@ router.post('/synthesize-async', async (req, res) => {
     for (const ch of chapters) {
       const generationId = uuidv4();
       const scopedKey = `${bookId}-${ch.idempotencyKey}`;
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ch.chapterId);
 
       const { data: inserted, error: insertErr } = await supabase
         .from('audio_generations')
@@ -393,6 +405,7 @@ router.post('/synthesize-async', async (req, res) => {
           id: generationId,
           user_id: userId,
           chapter_id: ch.chapterId,
+          chapter_uuid: isUuid ? ch.chapterId : null,
           language: ch.language,
           idempotency_key: scopedKey,
           status: 'processing',

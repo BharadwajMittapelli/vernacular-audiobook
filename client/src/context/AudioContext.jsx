@@ -12,7 +12,7 @@ export function AudioProvider({ children }) {
     currentTime: 0,
     duration: 0,
     playbackRate: 1.0,
-    activeChapter: null, // { chapterId, bookId, title, coverUrl, audioUrl, alignment }
+    activeChapter: null,
   });
 
   const updateState = (updates) => setState((prev) => ({ ...prev, ...updates }));
@@ -35,15 +35,25 @@ export function AudioProvider({ children }) {
     const audio = audioRef.current;
     const onTimeUpdate = () => updateState({ currentTime: audio.currentTime });
     const onLoadedMetadata = () => updateState({ duration: audio.duration });
-    const onEnded = () => updateState({ isPlaying: false });
+    const onEnded = () => updateState({ isPlaying: false, currentTime: audio.duration });
     const onError = async (e) => {
+      console.error('[AudioContext] Audio error:', audio.error);
+      updateState({ isPlaying: false });
       if (audio.error?.code === 4) { // MEDIA_ERR_SRC_NOT_SUPPORTED/FORBIDDEN
         const ch = state.activeChapter;
         if (ch) {
-          const fresh = await getChapterAudio(ch.chapterId);
-          audio.src = fresh.audioUrl;
-          audio.currentTime = state.currentTime;
-          audio.play();
+          try {
+            const fresh = await getChapterAudio(ch.chapterId);
+            if (fresh?.audioUrl) {
+              audio.src = fresh.audioUrl;
+              audio.currentTime = state.currentTime;
+              await audio.play();
+              updateState({ isPlaying: true });
+            }
+          } catch (err) {
+            console.error('[AudioContext] Failed to recover audio:', err);
+            updateState({ isPlaying: false });
+          }
         }
       }
     };
@@ -61,14 +71,32 @@ export function AudioProvider({ children }) {
   }, [state.activeChapter, state.currentTime]);
 
   const play = useCallback(async (chapter) => {
-    if (chapter?.chapterId !== state.activeChapter?.chapterId) {
-      audioRef.current.src = chapter.audioUrl;
-      updateState({ activeChapter: chapter, isPlaying: true });
-    } else {
-      updateState({ isPlaying: true });
+    if (!chapter?.audioUrl) {
+      console.warn('[AudioContext] Play called without audioUrl');
+      return;
     }
-    await audioRef.current.play();
-  }, [state.activeChapter]);
+
+    const audio = audioRef.current;
+
+    if (chapter?.chapterId !== state.activeChapter?.chapterId) {
+      audio.src = chapter.audioUrl;
+      // Reset time and duration for new chapter
+      updateState({
+        activeChapter: chapter,
+        currentTime: 0,
+        duration: 0,
+      });
+    }
+
+    try {
+      audio.playbackRate = state.playbackRate;
+      await audio.play();
+      updateState({ isPlaying: true });
+    } catch (err) {
+      console.error('[AudioContext] Play failed:', err);
+      updateState({ isPlaying: false });
+    }
+  }, [state.activeChapter, state.playbackRate]);
 
   const pause = useCallback(() => {
     audioRef.current.pause();
@@ -76,12 +104,18 @@ export function AudioProvider({ children }) {
   }, []);
 
   const seek = useCallback((time) => {
-    audioRef.current.currentTime = time;
+    const audio = audioRef.current;
+    audio.currentTime = time;
     updateState({ currentTime: time });
   }, []);
 
+  const setPlaybackRate = useCallback((rate) => {
+    audioRef.current.playbackRate = rate;
+    updateState({ playbackRate: rate });
+  }, []);
+
   return (
-    <AudioContext.Provider value={{ ...state, play, pause, seek, audioRef }}>
+    <AudioContext.Provider value={{ ...state, play, pause, seek, setPlaybackRate, audioRef }}>
       {children}
     </AudioContext.Provider>
   );
