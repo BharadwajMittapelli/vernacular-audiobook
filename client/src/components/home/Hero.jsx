@@ -14,7 +14,7 @@ export function Hero({ userName, onUpload }) {
             </div>
           </div>
 
-          <h1 className="font-serif text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.1] mb-6">
+          <h1 className="font-serif text-4xl lg:text-5xl font-bold tracking-tight text-foreground leading-[1.1] mb-6">
             Give your books<br />
             <span className="text-terracotta">a voice of their own</span>
           </h1>
