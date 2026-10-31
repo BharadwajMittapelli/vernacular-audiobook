@@ -295,7 +295,7 @@ function Dashboard() {
   const chapter = book ? book.chapters[activeIdx] : null;
   const alignment = audioResult?.alignment || [];
   const audioUrl = audioResult?.audioUrl || null;
-  const { isPlaying: sharedIsPlaying, currentTime: sharedCurrentTime, duration: sharedDuration, playbackRate: sharedPlaybackRate } = useAudio();
+  const { isPlaying: sharedIsPlaying, currentTime: sharedCurrentTime, duration: sharedDuration, playbackRate: sharedPlaybackRate, seek, setPlaybackRate } = useAudio();
 
   React.useEffect(() => {
     hasLoggedPlaybackRef.current = false;
