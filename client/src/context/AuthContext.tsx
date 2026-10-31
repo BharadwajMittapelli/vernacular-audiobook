@@ -1,6 +1,7 @@
 import React from 'react';
 import { supabase } from '../lib/supabaseClient.js';
 import type { Session, AuthError } from '@supabase/supabase-js';
+import { pushRecentAccount } from '../utils/recentAccounts.js';
 
 interface AuthContextType {
   session: Session | null;
@@ -43,6 +44,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } else if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') && newSession) {
         setSession(newSession);
         setError(null);
+        const u = newSession.user;
+        if (u.email) {
+          void pushRecentAccount(u.email, u.user_metadata?.full_name);
+        }
       }
     });
 
@@ -69,6 +74,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         email,
         password,
       });
+      if (data?.session?.user?.email) {
+        pushRecentAccount(data.session.user.email, data.session.user.user_metadata?.full_name);
+      }
       if (error) setError(error.message);
       return { data, error };
     } catch (e: unknown) {
@@ -81,6 +89,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       setError(null);
       const { data, error } = await supabase.auth.signUp({ email, password });
+      if (data?.session?.user?.email) {
+        pushRecentAccount(data.session.user.email, data.session.user.user_metadata?.full_name);
+      } else if (data?.user?.email) {
+        pushRecentAccount(data.user.email, data.user.user_metadata?.full_name);
+      }
       if (error) setError(error.message);
       return { data, error };
     } catch (e: unknown) {

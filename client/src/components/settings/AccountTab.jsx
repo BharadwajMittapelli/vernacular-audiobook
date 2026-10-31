@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { User as UserIcon, Mail, Camera, Lock, Trash2 } from 'lucide-react';
+import { User as UserIcon, Mail, Camera, Lock, Trash2, LogOut, ArrowRightLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { useNavigate } from '../../context/NavigateContext.jsx';
 import { supabase } from '../../lib/supabaseClient';
-import { updateProfile } from '../../services/api.js';
+import { updateProfile, deleteAccount } from '../../services/api.js';
+import {
+  getRecentAccounts,
+  pushRecentAccount,
+  clearRecentAccounts,
+} from '../../utils/recentAccounts.js';
+
+const EKITAB_PREFIX = 'ekithab-';
 
 export function AccountTab() {
-  const { session, loading: authLoading } = useAuth();
+  const { session, loading: authLoading, signOut } = useAuth();
+  const navigate = useNavigate();
   const user = session?.user;
 
   const [fullName, setFullName] = useState('');
@@ -19,6 +28,9 @@ export function AccountTab() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [resetErr, setResetErr] = useState('');
+  const [recentAccounts, setRecentAccounts] = useState([]);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -29,6 +41,7 @@ export function AccountTab() {
     const av = user.user_metadata?.avatar_url || '';
     setAvatarUrl(av);
     setOriginalAvatar(av);
+    setRecentAccounts(getRecentAccounts().filter((a) => a.email !== user.email));
   }, [user]);
 
   const handleSave = async () => {
@@ -80,6 +93,41 @@ export function AccountTab() {
       setResetSent(true);
     } catch (err) {
       setResetErr(err.message || 'Failed to send reset email');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith(EKITAB_PREFIX)) localStorage.removeItem(key);
+      });
+      await signOut();
+      navigate('/');
+    } catch (err) {
+      setSaveErr(err?.message || 'Logout failed');
+    }
+  };
+
+  const handleSwitchAccount = (targetEmail) => {
+    localStorage.setItem('ekithab-pending-email', targetEmail);
+    navigate('/auth');
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    setDeleteMsg('');
+    try {
+      await deleteAccount();
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith(EKITAB_PREFIX)) localStorage.removeItem(key);
+      });
+      await signOut();
+      navigate('/');
+    } catch (err) {
+      setDeleteMsg(err?.response?.data?.error || err.message || 'Failed to delete account');
+    } finally {
+      setDeleting(false);
+      setShowResetModal(false);
     }
   };
 
@@ -183,6 +231,53 @@ export function AccountTab() {
 
       <div className="border-t border-border" />
 
+      {/* Switch account */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Switch account</h2>
+            <p className="text-sm text-muted-foreground">Quickly sign in to a different account.</p>
+          </div>
+          {recentAccounts.length > 0 && (
+            <button
+              onClick={() => { clearRecentAccounts(); setRecentAccounts([]); }}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Clear history
+            </button>
+          )}
+        </div>
+        {recentAccounts.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-2">No other accounts on record.</p>
+        ) : (
+          <div className="space-y-2">
+            {recentAccounts.map((acc) => (
+              <button
+                key={acc.email}
+                onClick={() => handleSwitchAccount(acc.email)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border hover:bg-muted transition-colors text-left"
+              >
+                <div className="w-8 h-8 rounded-full bg-terracotta text-background flex items-center justify-center text-xs font-semibold shrink-0">
+                  {acc.displayName
+                    .split(' ')
+                    .map((s) => s[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground truncate">{acc.displayName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{acc.email}</p>
+                </div>
+                <ArrowRightLeft className="h-4 w-4 text-muted-foreground shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-border" />
+
       {/* Security */}
       <div>
         <div className="flex items-center justify-between">
@@ -202,6 +297,25 @@ export function AccountTab() {
           <p className="mt-3 text-sm text-success">Password reset email sent. Check your inbox.</p>
         )}
         {resetErr && <p className="mt-3 text-sm text-destructive">{resetErr}</p>}
+      </div>
+
+      <div className="border-t border-border" />
+
+      {/* Logout */}
+      <div>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground mb-1">Log out</h2>
+            <p className="text-sm text-muted-foreground">End your session and clear local data on this device.</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Log out
+          </button>
+        </div>
       </div>
 
       <div className="border-t border-border" />
@@ -239,16 +353,17 @@ export function AccountTab() {
                 Cancel
               </button>
               <button
-                disabled
-                className="flex-1 px-3 py-2 rounded-lg border border-destructive text-sm font-medium text-destructive hover:bg-destructive/5 transition-colors opacity-50 cursor-not-allowed"
-                title="Account deletion is not yet available"
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="flex-1 px-3 py-2 rounded-lg border border-destructive text-sm font-medium text-destructive hover:bg-destructive/5 transition-colors disabled:opacity-50"
               >
-                Delete account
+                {deleting ? 'Deleting…' : 'Delete account'}
               </button>
             </div>
             <p className="text-xs text-muted-foreground mt-3 text-center">
-              Account deletion is not yet available. Contact support for assistance.
+              This action is permanent and cannot be undone.
             </p>
+            {deleteMsg && <p className="text-xs text-destructive mt-2 text-center">{deleteMsg}</p>}
           </div>
         </div>
       )}

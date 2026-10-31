@@ -3,6 +3,11 @@ import { supabase } from '../config/supabase.js';
 
 const router = express.Router();
 
+const SUPPORTED_LANGUAGES = [
+  'en-IN', 'hi-IN', 'te-IN', 'ta-IN', 'kn-IN',
+  'ml-IN', 'mr-IN', 'bn-IN', 'gu-IN', 'pa-IN',
+];
+
 // GET /api/settings/stats — user credits, book count, audio duration
 router.get('/stats', async (req, res) => {
   try {
@@ -91,6 +96,67 @@ router.put('/profile', async (req, res) => {
     res.json({ success: true, user: data?.user });
   } catch (error) {
     console.error('PUT /settings/profile error:', error.message);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// PUT /api/settings/preferences — persist preferred_language to auth user metadata
+router.put('/preferences', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { language } = req.body || {};
+
+    if (!language || !SUPPORTED_LANGUAGES.includes(language)) {
+      return res.status(400).json({
+        success: false,
+        error: `language must be one of: ${SUPPORTED_LANGUAGES.join(', ')}`,
+      });
+    }
+
+    const { data, error } = await supabase.auth.admin.updateUserById(userId, {
+      data: { preferred_language: language },
+    });
+
+    if (error) {
+      console.error('PUT /settings/preferences error:', error.message);
+      return res.status(500).json({ success: false, error: 'Failed to update language preference' });
+    }
+
+    res.json({ success: true, language: data?.user?.user_metadata?.preferred_language });
+  } catch (error) {
+    console.error('PUT /settings/preferences error:', error.message);
+    return res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/settings/account — hard-delete the current user and all their data
+router.delete('/account', async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const deleteFrom = async (table) => {
+      const { error } = await supabase.from(table).delete().eq('user_id', userId);
+      if (error) throw error;
+    };
+
+    // Delete child rows first (service_role bypasses RLS)
+    await deleteFrom('downloads');
+    await deleteFrom('credit_transactions');
+    await deleteFrom('audio_generations');
+    await deleteFrom('chapters');
+    await deleteFrom('books');
+    await deleteFrom('users');
+
+    // Remove the auth user (terminates all sessions)
+    const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+    if (authError) {
+      console.error('DELETE /settings/account auth error:', authError.message);
+      return res.status(500).json({ success: false, error: 'Failed to delete auth account' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('DELETE /settings/account error:', error.message);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });

@@ -28,7 +28,7 @@ function App() {
   }, []);
 
   // Redirect after auth state resolves:
-  // - Authenticated user on /auth → /my-books
+  // - Authenticated user on /auth → /home
   // - Unauthenticated user on any non-auth page (excluding / landing) → /auth
   useEffect(() => {
     if (loading) return;
@@ -37,7 +37,7 @@ function App() {
     const hasBookId = params.get('bookId') !== null;
 
     if (session && !hasBookId && path === '/auth') {
-      navigate('/my-books');
+      navigate('/home');
     } else if (!session && path !== '/auth' && path !== '/') {
       navigate('/auth');
     }
@@ -47,11 +47,11 @@ function App() {
   useEffect(() => {
     if (loading || !session) return;
     if (path.startsWith('/listen/')) return;
-    if (path === '/my-books') return;
+    if (path === '/home') return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('bookId')) return;
     if (path !== '/') return;
-    navigate('/my-books');
+    navigate('/home');
   }, [session, loading, path, navigate]);
 
   // Public listener route: render before the auth spinner so logged-out

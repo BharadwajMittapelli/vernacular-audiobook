@@ -561,7 +561,7 @@ export default function LandingPage() {
                   }
                 } else {
                   setShowAuthModal(false);
-                  navigate('/my-books');
+                  navigate('/home');
                 }
                 setSubmitting(false);
               }}

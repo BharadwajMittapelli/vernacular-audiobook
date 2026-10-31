@@ -171,6 +171,14 @@ export function updateProfile({ full_name, avatar_url }) {
   return api.put('/api/settings/profile', { full_name, avatar_url }).then((res) => res.data);
 }
 
+export function updatePreferences({ language }) {
+  return api.put('/api/settings/preferences', { language }).then((res) => res.data);
+}
+
+export function deleteAccount() {
+  return api.delete('/api/settings/account').then((res) => res.data);
+}
+
 export function logExport(download) {
   return api.post('/api/library/downloads/log', download).then((res) => res.data);
 }

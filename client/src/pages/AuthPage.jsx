@@ -7,11 +7,19 @@ export default function AuthPage() {
   const { signIn, signUp, signInWithGoogle, loading } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState('signin');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => localStorage.getItem('ekithab-pending-email') || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  React.useEffect(() => {
+    const pending = localStorage.getItem('ekithab-pending-email');
+    if (pending) {
+      localStorage.removeItem('ekithab-pending-email');
+      setEmail(pending);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
