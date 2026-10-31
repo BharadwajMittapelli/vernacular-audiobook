@@ -15,8 +15,8 @@ export function Hero({ userName, onUpload }) {
           </div>
 
           <h1 className="font-serif text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.1] mb-6">
-            Turn your reading<br />
-            <span className="text-terracotta">into listening</span>
+            Give your books<br />
+            <span className="text-terracotta">a voice of their own</span>
           </h1>
 
           <p className="text-base text-muted-foreground mb-8 leading-relaxed max-w-xl">
@@ -41,7 +41,7 @@ export function Hero({ userName, onUpload }) {
                 </div>
               ))}
             </div>
-            <p className="text-sm text-muted-foreground">Join readers turning their books into beautiful audio experiences.</p>
+            <p className="text-sm text-muted-foreground">Join readers giving their books a beautiful new voice.</p>
           </div>
         </div>
 
