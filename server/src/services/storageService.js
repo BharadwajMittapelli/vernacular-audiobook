@@ -72,3 +72,21 @@ export async function uploadAudio(audioBuffer, chapterId, format = 'wav') {
 
   return { audioPath: fileName, signedAudioUrl: signedUrl };
 }
+
+/**
+ * Generate a time-limited signed URL for an artwork/image file.
+ * @param {string} filePath - Raw storage path, e.g. "artwork/<bookId>.jpg"
+ * @param {number} expiresInSeconds
+ * @returns {Promise<string>} Signed URL string
+ * @throws {Error} if the bucket is private and the file doesn't exist
+ */
+export async function getSignedImageUrl(filePath, expiresInSeconds = 3600) {
+  const { data, error } = await supabase.storage
+    .from(AUDIO_BUCKET)
+    .createSignedUrl(filePath, expiresInSeconds);
+
+  if (error) {
+    throw new Error(`Signed URL generation failed: ${error.message}`);
+  }
+  return data.signedUrl;
+}

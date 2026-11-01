@@ -1,6 +1,7 @@
-import React from 'react';
-import { Play, Pause, SkipBack, SkipForward, Download, ExternalLink, Heart, ChevronDown } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Play, Pause, SkipBack, SkipForward, Download, ExternalLink, Heart, ChevronDown, Camera } from 'lucide-react';
 import { DEFAULT_VOICE_BY_LANG, LANGUAGE_FLAG, LANGUAGE_NAME } from './AudioRow.jsx';
+import { uploadArtwork } from '../../services/api.js';
 
 export function PlayerPanel({
   activeChapter,
@@ -15,7 +16,36 @@ export function PlayerPanel({
   onFavoriteToggle,
   onDownload,
   onOpenStudio,
+  onArtworkUpdate,
 }) {
+  const fileInputRef = useRef(null);
+
+  const handleArtworkClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/jpeg')) {
+      alert('Only JPEG images are allowed.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size exceeds 5MB limit.');
+      return;
+    }
+
+    try {
+      const result = await uploadArtwork(activeChapter.bookId, file);
+      onArtworkUpdate?.(result.coverUrl);
+    } catch (err) {
+      console.error('Failed to upload artwork:', err);
+      alert('Failed to upload artwork.');
+    }
+  };
+
   if (!activeChapter) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center gap-3 p-4">
@@ -46,20 +76,34 @@ export function PlayerPanel({
     <div className="pb-4">
       {/* Cover */}
       <div className="flex flex-col items-center text-center mb-3 relative">
-        <div className="w-44 h-44 rounded-xl overflow-hidden bg-muted shadow-xl mb-4 relative">
+        <div 
+          className="w-44 h-44 rounded-xl overflow-hidden bg-muted shadow-xl mb-4 relative cursor-pointer group"
+          onClick={handleArtworkClick}
+        >
           {activeChapter.coverUrl ? (
-            <img
-              src={activeChapter.coverUrl}
-              alt={activeChapter.bookTitle}
-              className="w-full h-full object-cover"
-            />
+            <>
+              <img
+                src={activeChapter.coverUrl}
+                alt={activeChapter.bookTitle}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                <Camera className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+              </div>
+            </>
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-3xl font-bold text-muted-foreground">
-              {(activeChapter.bookTitle || '').slice(0, 2).toUpperCase()}
+            <div className="w-full h-full flex items-center justify-center text-3xl font-bold text-muted-foreground group-hover:bg-muted/80 transition-colors">
+              <div className="flex flex-col items-center gap-2">
+                <span>{(activeChapter.bookTitle || '').slice(0, 2).toUpperCase()}</span>
+                <Camera className="h-5 w-5 text-muted-foreground/50" />
+              </div>
             </div>
           )}
           <button
-            onClick={onFavoriteToggle}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFavoriteToggle?.();
+            }}
             className={`absolute top-4 right-4 p-1.5 rounded-full bg-background/90 backdrop-blur-sm hover:bg-background transition-colors shadow-md ${
               isFavorite ? 'text-terracotta' : 'text-muted-foreground hover:text-terracotta'
             }`}
@@ -68,6 +112,13 @@ export function PlayerPanel({
           >
             <Heart className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
           </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".jpg,.jpeg"
+            className="hidden"
+            onChange={handleFileChange}
+          />
         </div>
         <h2 className="font-serif text-lg font-semibold text-foreground leading-tight px-2 max-w-full">
           {activeChapter.chapterTitle}

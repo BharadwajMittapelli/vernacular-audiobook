@@ -1,8 +1,25 @@
 import express from 'express';
+import multer from 'multer';
 import { supabase } from '../config/supabase.js';
-import { resolveAudioUrl } from '../services/storageService.js';
+import { resolveAudioUrl, getSignedImageUrl } from '../services/storageService.js';
 
 const router = express.Router();
+
+// Multer config for artwork uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = ['image/jpeg'];
+    const allowedExtensions = ['.jpg', '.jpeg'];
+    const ext = '.' + file.originalname.split('.').pop().toLowerCase();
+    if (!allowedMimeTypes.includes(file.mimetype) || !allowedExtensions.includes(ext)) {
+      return cb(new Error('Only JPEG images are allowed'));
+    }
+    cb(null, true);
+  },
+});
 
 router.get('/all-audio', async (req, res) => {
   try {
@@ -59,13 +76,24 @@ router.get('/all-audio', async (req, res) => {
       const audioUrl = await resolveAudioUrl(gen);
       if (!audioUrl) continue;
 
+      // Generate signed URL for cover image if artwork exists
+      let coverUrl = book.cover_url;
+      if (coverUrl) {
+        try {
+          coverUrl = await getSignedImageUrl(coverUrl, 3600);
+        } catch (imgError) {
+          console.warn(`[Library] Failed to generate signed URL for artwork ${coverUrl}:`, imgError.message);
+          coverUrl = null;
+        }
+      }
+
       items.push({
         chapterId: ch.id,
         chapterTitle: ch.title,
         sequenceNumber: ch.sequence_number,
         bookId: ch.book_id,
         bookTitle: book.title,
-        coverUrl: book.cover_url,
+        coverUrl,
         language: gen.language || ch.language,
         durationSeconds: gen.duration,
         audioUrl,
@@ -502,6 +530,123 @@ router.delete('/favorites/:chapterId', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/library/favorites/:chapterId error:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// POST /artwork/:bookId — Upload custom artwork for a book
+router.post('/artwork/:bookId', upload.single('artwork'), async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const { bookId } = req.params;
+  if (!bookId) {
+    return res.status(400).json({ success: false, error: 'Missing bookId' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No artwork file provided' });
+  }
+
+  try {
+    // Verify user owns the book
+    const { data: book, error: bookError } = await supabase
+      .from('books')
+      .select('id')
+      .eq('id', bookId)
+      .eq('user_id', userId)
+      .single();
+
+    if (bookError || !book) {
+      return res.status(404).json({ success: false, error: 'Book not found or access denied' });
+    }
+
+    // Upload artwork to storage with stable path
+    const filePath = `artwork/${bookId}.jpg`;
+    const { error: uploadError } = await supabase.storage
+      .from(AUDIO_BUCKET)
+      .upload(filePath, req.file.buffer, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error('[Artwork] Upload failed:', uploadError.message);
+      return res.status(500).json({ success: false, error: 'Failed to upload artwork' });
+    }
+
+    // Update book's cover_url with stable path
+    const { error: updateError } = await supabase
+      .from('books')
+      .update({ cover_url: filePath })
+      .eq('id', bookId)
+      .eq('user_id', userId);
+
+    if (updateError) {
+      console.error('[Artwork] DB update failed:', updateError.message);
+      return res.status(500).json({ success: false, error: 'Failed to update book artwork' });
+    }
+
+    // Generate signed URL for immediate display
+    let signedUrl = null;
+    try {
+      signedUrl = await getSignedImageUrl(filePath, 3600);
+    } catch (imgError) {
+      console.warn('[Artwork] Signed URL generation failed:', imgError.message);
+    }
+
+    res.json({ success: true, coverUrl: signedUrl || filePath });
+  } catch (error) {
+    console.error('POST /api/library/artwork/:bookId error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// PUT /chapters/:chapterId/rename — Rename a chapter title
+router.put('/chapters/:chapterId/rename', async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  const { chapterId } = req.params;
+  const { title } = req.body;
+
+  if (!title || typeof title !== 'string' || !title.trim()) {
+    return res.status(400).json({ success: false, error: 'Title is required' });
+  }
+
+  const trimmedTitle = title.trim();
+
+  try {
+    // Verify ownership: chapters has direct user_id column
+    const { data: chapter, error: chapterError } = await supabase
+      .from('chapters')
+      .select('id, book_id, sequence_number, title, status')
+      .eq('id', chapterId)
+      .eq('user_id', userId)
+      .single();
+
+    if (chapterError || !chapter) {
+      return res.status(404).json({ success: false, error: 'Chapter not found or access denied' });
+    }
+
+    // Update title
+    const { data: updated, error: updateError } = await supabase
+      .from('chapters')
+      .update({ title: trimmedTitle })
+      .eq('id', chapterId)
+      .eq('user_id', userId)
+      .select('id, book_id, sequence_number, title, status')
+      .single();
+
+    if (updateError) throw updateError;
+
+    res.json({ success: true, chapter: updated });
+  } catch (error) {
+    console.error('PUT /api/library/chapters/:chapterId/rename error:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });

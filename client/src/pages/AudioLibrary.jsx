@@ -253,6 +253,13 @@ export default function AudioLibrary() {
                   isFavorite={(id) => favorites.has(id)}
                   onFavoriteToggle={toggleFavorite}
                   selectedChapterId={selectedChapterId}
+                  onChapterUpdate={(updatedChapter) => {
+                    setItems((prev) => prev.map((item) =>
+                      item.chapterId === updatedChapter.id
+                        ? { ...item, chapterTitle: updatedChapter.title }
+                        : item
+                    ));
+                  }}
                 />
               </>
             ) : activeTab === 'by-book' ? (
@@ -265,6 +272,22 @@ export default function AudioLibrary() {
                   onSelect={handleSelectChapter}
                   onFavoriteToggle={toggleFavorite}
                   loading={byBookLoading}
+                  onChapterUpdate={(updatedChapter) => {
+                    setByBookData((prev) => prev.map((book) => ({
+                      ...book,
+                      chapters: book.chapters.map((ch) =>
+                        ch.chapterId === updatedChapter.id
+                          ? { ...ch, chapterTitle: updatedChapter.title }
+                          : ch
+                      ),
+                    })));
+                    // Also update items to keep All Audio in sync
+                    setItems((prev) => prev.map((item) =>
+                      item.chapterId === updatedChapter.id
+                        ? { ...item, chapterTitle: updatedChapter.title }
+                        : item
+                    ));
+                  }}
                 />
               </>
             ) : activeTab === 'favorites' ? (
@@ -299,6 +322,13 @@ export default function AudioLibrary() {
             onFavoriteToggle={displayChapter ? () => toggleFavorite(displayChapter.chapterId, displayChapter.bookId) : undefined}
             onDownload={handleDownload}
             onOpenStudio={handleOpenStudio}
+            onArtworkUpdate={(coverUrl) => {
+              if (displayChapter) {
+                setItems((prev) => prev.map((item) =>
+                  item.bookId === displayChapter.bookId ? { ...item, coverUrl } : item
+                ));
+              }
+            }}
           />
         </div>
       </div>

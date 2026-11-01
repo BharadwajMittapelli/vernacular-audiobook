@@ -48,6 +48,14 @@
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 
+  button:not(:disabled),
+  a[href],
+  input[type="range"],
+  [role="button"]:not([aria-disabled="true"]):not(:disabled),
+  [role="tab"] {
+    cursor: pointer;
+  }
+
   .font-serif {
     font-family: 'Lora', ui-serif, Georgia, Cambria, serif;
   }

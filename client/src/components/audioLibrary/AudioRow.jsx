@@ -1,7 +1,14 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { Play, Pause, MoreHorizontal, Heart } from 'lucide-react';
+import { renameChapter } from '../../services/api.js';
 
-export function AudioRow({ item, isActive, isPlaying, isFavorite, isSelected, onPlay, onSelect, onFavoriteToggle }) {
+export function AudioRow({ item, isActive, isPlaying, isFavorite, isSelected, onPlay, onSelect, onFavoriteToggle, onChapterUpdate }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const originalTitleRef = useRef(item.chapterTitle);
+
   const language = item.language || 'en-IN';
   const voiceName = item.voiceName || 'Kaveri';
   const duration = formatDuration(item.durationSeconds);
@@ -11,9 +18,61 @@ export function AudioRow({ item, isActive, isPlaying, isFavorite, isSelected, on
   const langName = LANGUAGE_NAME[language] || 'English';
   const bookInitials = (item.bookTitle || '').slice(0, 2).toUpperCase();
 
+  const handleTitleClick = () => {
+    if (!isEditing) {
+      setEditValue(item.chapterTitle);
+      setIsEditing(true);
+    }
+  };
+
+  const handleSave = async () => {
+    const trimmed = editValue.trim();
+    if (!trimmed) {
+      setError('Title cannot be empty');
+      return;
+    }
+    if (trimmed === originalTitleRef.current) {
+      setIsEditing(false);
+      return;
+    }
+    if (saving) return;
+
+    setSaving(true);
+    setError('');
+    try {
+      const updatedChapter = await renameChapter(item.chapterId, trimmed);
+      if (onChapterUpdate) {
+        onChapterUpdate(updatedChapter);
+      }
+      setIsEditing(false);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save');
+      setEditValue(originalTitleRef.current);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setError('');
+    setEditValue(originalTitleRef.current);
+  };
+
+  const handleBlur = () => {
+    handleCancel();
+  };
+
   return (
     <div
       onClick={onSelect ? () => onSelect(item.chapterId) : undefined}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          onSelect?.(item.chapterId);
+        }
+      }}
       className="flex items-center gap-3 px-3 py-3 rounded-xl bg-terracotta/10 border border-terracotta/20 shadow-sm"
     >
       {/* Play toggle */}
@@ -36,9 +95,31 @@ export function AudioRow({ item, isActive, isPlaying, isFavorite, isSelected, on
 
       {/* Book column — chapter title + thumbnail + book name */}
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-semibold truncate font-serif leading-tight ${isSelected ? 'text-terracotta' : 'text-foreground'}`}>
-          {item.chapterTitle}
-        </p>
+        {isEditing ? (
+          <div className="flex flex-col gap-1">
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSave();
+                if (e.key === 'Escape') handleCancel();
+              }}
+              onBlur={handleBlur}
+              className="text-sm font-semibold text-foreground font-serif leading-tight border-b border-terracotta bg-transparent outline-none px-1 -mx-1 w-full truncate"
+              autoFocus
+              disabled={saving}
+            />
+            {error && <span className="text-xs text-destructive">{error}</span>}
+          </div>
+        ) : (
+          <p
+            onClick={handleTitleClick}
+            className={`text-sm font-semibold truncate font-serif leading-tight cursor-text hover:bg-muted/50 rounded px-1 -mx-1 transition-colors ${isSelected ? 'text-terracotta' : 'text-foreground'}`}
+          >
+            {item.chapterTitle}
+          </p>
+        )}
         <div className="flex items-center gap-2 mt-0.5">
           <div className="w-6 h-6 rounded-md overflow-hidden bg-muted shrink-0 flex items-center justify-center text-[10px] font-bold text-muted-foreground">
             {item.coverUrl ? (

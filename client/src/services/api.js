@@ -215,4 +215,20 @@ export function removeFavorite(chapterId) {
   return api.delete(`/api/library/favorites/${chapterId}`).then((res) => res.data);
 }
 
+export function uploadArtwork(bookId, file) {
+  const form = new FormData();
+  form.append('artwork', file);
+  return api
+    .post(`/api/library/artwork/${bookId}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((res) => res.data);
+}
+
+export function renameChapter(chapterId, newTitle) {
+  return api
+    .put(`/api/library/chapters/${chapterId}/rename`, { title: newTitle })
+    .then((res) => res.data.chapter);
+}
+
 export default api;
