@@ -16,6 +16,7 @@ export function AudioTable({
   isFavorite,
   onFavoriteToggle,
   selectedChapterId,
+  onChapterUpdate,
 }) {
   const filtered = items.filter((item) => {
     const q = searchQuery.toLowerCase();
@@ -115,6 +116,7 @@ export function AudioTable({
           onPlay={onPlay}
           onSelect={onSelect}
           onFavoriteToggle={onFavoriteToggle}
+          onChapterUpdate={onChapterUpdate}
         />
       ))}
     </div>

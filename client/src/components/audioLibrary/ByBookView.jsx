@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ChevronDown, ChevronRight, Play } from 'lucide-react';
 import { DEFAULT_VOICE_BY_LANG, LANGUAGE_FLAG, LANGUAGE_NAME, formatDuration, formatRelativeTime } from './AudioRow.jsx';
+import { renameChapter } from '../../services/api.js';
 
 export function ByBookView({
   books,
@@ -9,6 +10,7 @@ export function ByBookView({
   onPlay,
   onSelect,
   onFavoriteToggle,
+  onChapterUpdate,
 }) {
   if (!books || books.length === 0) {
     return (
@@ -37,13 +39,14 @@ export function ByBookView({
           onPlay={onPlay}
           onSelect={onSelect}
           onFavoriteToggle={onFavoriteToggle}
+          onChapterUpdate={onChapterUpdate}
         />
       ))}
     </div>
   );
 }
 
-function BookCard({ book, activeChapterId, isPlaying, onPlay, onSelect, onFavoriteToggle }) {
+function BookCard({ book, activeChapterId, isPlaying, onPlay, onSelect, onFavoriteToggle, onChapterUpdate }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -101,6 +104,7 @@ function BookCard({ book, activeChapterId, isPlaying, onPlay, onSelect, onFavori
               onPlay={onPlay}
               onSelect={onSelect}
               onFavoriteToggle={onFavoriteToggle}
+              onChapterUpdate={onChapterUpdate}
             />
           ))}
         </div>
@@ -118,12 +122,64 @@ function ChapterRow({
   onPlay,
   onSelect,
   onFavoriteToggle,
+  onChapterUpdate,
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const originalTitleRef = useRef(chapter.chapterTitle);
+
   const language = chapter.language || 'en-IN';
   const flagEmoji = LANGUAGE_FLAG[language] || '🇮🇳';
   const langName = LANGUAGE_NAME[language] || 'English';
   const duration = formatDuration(chapter.durationSeconds);
   const timeAgo = formatRelativeTime(chapter.lastPlayedAt);
+
+  const handleTitleClick = () => {
+    if (!isEditing) {
+      setEditValue(chapter.chapterTitle);
+      setIsEditing(true);
+    }
+  };
+
+  const handleSave = async () => {
+    const trimmed = editValue.trim();
+    if (!trimmed) {
+      setError('Title cannot be empty');
+      return;
+    }
+    if (trimmed === originalTitleRef.current) {
+      setIsEditing(false);
+      return;
+    }
+    if (saving) return;
+
+    setSaving(true);
+    setError('');
+    try {
+      const updatedChapter = await renameChapter(chapter.chapterId, trimmed);
+      if (onChapterUpdate) {
+        onChapterUpdate(updatedChapter);
+      }
+      setIsEditing(false);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to save');
+      setEditValue(originalTitleRef.current);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setError('');
+    setEditValue(originalTitleRef.current);
+  };
+
+  const handleBlur = () => {
+    handleCancel();
+  };
 
   return (
     <div
@@ -154,9 +210,31 @@ function ChapterRow({
       </button>
 
       <div className="flex-1 min-w-0 pr-2">
-        <p className={`text-sm font-semibold truncate ${isActive ? 'text-terracotta' : 'text-foreground'} font-serif leading-tight`}>
-          {chapter.chapterTitle}
-        </p>
+        {isEditing ? (
+          <div className="flex flex-col gap-1">
+            <input
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSave();
+                if (e.key === 'Escape') handleCancel();
+              }}
+              onBlur={handleBlur}
+              className={`text-sm font-semibold truncate font-serif leading-tight border-b border-terracotta bg-transparent outline-none px-1 -mx-1 w-full ${isActive ? 'text-terracotta' : 'text-foreground'}`}
+              autoFocus
+              disabled={saving}
+            />
+            {error && <span className="text-xs text-destructive">{error}</span>}
+          </div>
+        ) : (
+          <p
+            onClick={handleTitleClick}
+            className={`text-sm font-semibold truncate font-serif leading-tight cursor-text hover:bg-muted/50 rounded px-1 -mx-1 transition-colors ${isActive ? 'text-terracotta' : 'text-foreground'}`}
+          >
+            {chapter.chapterTitle}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground truncate mt-0.5 hidden sm:block">{bookTitle}</p>
       </div>
 
