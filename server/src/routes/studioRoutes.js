@@ -5,6 +5,7 @@ import { stripMarkdown } from '../services/textProcessor.js';
 import { synthesizeText } from '../services/ttsProvider.js';
 import { generateSpatialScript } from '../services/llmDirector.js';
 import { classifyBookGenre } from '../services/genreClassifier.js';
+import { buildSilenceBuffer } from '../services/audioStitcher.js';
 import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import { unlink, writeFile } from 'fs/promises';
@@ -100,51 +101,69 @@ router.post('/spatial-preview', async (req, res) => {
 
   const tempPaths = [];
   try {
-    // 1. Generate script via Gemini with atmospheric profile
+    const SSML_STRIP_REGEX = /<[^>]*>/g;
+    
+    // 1. Generate spatial script from Groq (SSML-injected output)
     const script = await generateSpatialScript(chapterText.trim(), audioProfile);
 
-    // Validate response shape
     if (!script.main || !script.main.text) {
-      throw new Error('Invalid Gemini response: missing main.text');
+      throw new Error('Invalid script: missing main.text');
     }
 
-    // Build track array from script (skip empty optional tracks)
-    const tracks = [
-      { text: script.main.text, voice: script.main.voice, language: script.main.language, label: 'main' },
-      ...(script.sidekick?.text ? [{ text: script.sidekick.text, voice: script.sidekick.voice, language: script.sidekick.language, label: 'sec' }] : []),
-      ...(script.ambient?.text ? [{ text: script.ambient.text, voice: script.ambient.voice, language: script.ambient.language, label: 'amb' }] : []),
-    ];
-
-    // 2. Parallel synthesis with Promise.allSettled
-    const settled = await Promise.allSettled(
-      tracks.map(async (t) => {
-        const buf = (await synthesizeText(t.text, t.language, t.voice)).audioBuffer;
-        const p = resolve(tmpdir(), `${t.label}_${randomUUID()}.wav`);
-        await writeFile(p, buf);
-        tempPaths.push(p);
-        return p;
-      })
-    );
-
-    // 3. Extract results safely by matching track labels (not positions)
-    const mainResult = settled[0];
-    if (mainResult.status === 'rejected') {
-      throw mainResult.reason;
+    // 2. SSML sanitizer: parse main track for per-break silence
+    const mainSsml = script.main.text;
+    const parts = [];
+    let cur = mainSsml;
+    const brRe = /<break\s+time\s*=\s*["'](\d+)ms["']\s*\/?>/gi;
+    let m, last = 0;
+    while ((m = brRe.exec(cur)) !== null) {
+      const seg = cur.slice(last, m.index).trim();
+      if (seg) parts.push({ type: 'text', val: seg.replace(SSML_STRIP_REGEX, '') });
+      parts.push({ type: 'break', val: parseInt(m[1], 10) });
+      last = m.index + m[0].length;
     }
-    const mainPath = mainResult.value;
+    const after = cur.slice(last).trim();
+    if (after) parts.push({ type: 'text', val: after.replace(SSML_STRIP_REGEX, '') });
 
-    let sidekickPath = null;
-    let ambientPath = null;
+    // 3. Concurrent synthesis of main text segments
+    const textSegs = parts.filter(p => p.type === 'text').map(p => p.val);
+    const segBufs = await Promise.all(textSegs.map(s => synthesizeText(s, script.main.language, script.main.voice)));
 
-    tracks.forEach((t, idx) => {
-      const result = settled[idx];
-      if (result.status === 'fulfilled') {
-        if (t.label === 'sec') sidekickPath = result.value;
-        if (t.label === 'amb') ambientPath = result.value;
-      } else {
-        console.warn(`[Spatial DSP] Track '${t.label}' failed:`, result.reason?.message ?? result.reason);
-      }
-    });
+    // 4. Interleave audio + silence (byteRate = 32000 for 16kHz 16-bit mono)
+    const byteRate = 32000;
+    const mergedParts = [];
+    let ti = 0;
+    for (const p of parts) {
+      if (p.type === 'text') mergedParts.push(segBufs[ti++].audioBuffer);
+      else mergedParts.push(buildSilenceBuffer(p.val, byteRate));
+    }
+    const mainBuf = Buffer.concat(mergedParts);
+
+    // 5. Write main WAV
+    const mainPath = resolve(tmpdir(), `main_${randomUUID()}.wav`);
+    await writeFile(mainPath, mainBuf);
+    tempPaths.push(mainPath);
+
+    // 6. Sidekick & ambient: strip SSML tags before TTS
+    let sidekickPath = null, ambientPath = null;
+
+    if (script.sidekick?.text) {
+      const clean = script.sidekick.text.replace(SSML_STRIP_REGEX, '');
+      const buf = (await synthesizeText(clean, script.sidekick.language, script.sidekick.voice)).audioBuffer;
+      const p = resolve(tmpdir(), `sec_${randomUUID()}.wav`);
+      await writeFile(p, buf);
+      tempPaths.push(p);
+      sidekickPath = p;
+    }
+
+    if (script.ambient?.text) {
+      const clean = script.ambient.text.replace(SSML_STRIP_REGEX, '');
+      const buf = (await synthesizeText(clean, script.ambient.language, script.ambient.voice)).audioBuffer;
+      const p = resolve(tmpdir(), `amb_${randomUUID()}.wav`);
+      await writeFile(p, buf);
+      tempPaths.push(p);
+      ambientPath = p;
+    }
 
     // 4. Load FFmpeg
     const ffmpeg = (await import('fluent-ffmpeg')).default;
@@ -154,23 +173,26 @@ router.post('/spatial-preview', async (req, res) => {
 
     const ffmpegProcess = ffmpeg();
 
-    // 5. Dynamic filter builder
+    // 5. Dynamic filter builder with crossfeed DSP
     let inputCount = 0;
     const filters = [];
 
+    // Main: slight crossfeed for natural spatial width
     ffmpegProcess.input(mainPath);
-    filters.push(`[${inputCount}:a]volume=1.0,pan=stereo|c0=FL|c1=FR[main]`);
+    filters.push(`[${inputCount}:a]volume=1.0,pan=stereo|c0=0.8*c0|c1=0.8*c0[main]`);
     inputCount++;
 
+    // Sidekick: hard-right with left-ear bleed (crossfeed for spatial separation)
     if (sidekickPath) {
       ffmpegProcess.input(sidekickPath);
-      filters.push(`[${inputCount}:a]volume=0.5,pan=stereo|c1=FR[sidekick]`);
+      filters.push(`[${inputCount}:a]volume=0.45,pan=stereo|c0=0.2*c0|c1=0.8*c0[sidekick]`);
       inputCount++;
     }
 
+    // Ambient: low-pass filter (500 Hz) → environmental rumble, then reverb tail
     if (ambientPath) {
       ffmpegProcess.input(ambientPath);
-      filters.push(`[${inputCount}:a]volume=0.15,aecho=0.8:0.9:1000:0.3[bg]`);
+      filters.push(`[${inputCount}:a]volume=0.15,highpass=f=100,lowpass=f=500,aecho=0.8:0.9:1000:0.3[bg]`);
       inputCount++;
     }
 
