@@ -126,9 +126,12 @@ router.post('/spatial-preview', async (req, res) => {
     const after = cur.slice(last).trim();
     if (after) parts.push({ type: 'text', val: after.replace(SSML_STRIP_REGEX, '') });
 
-    // 3. Concurrent synthesis of main text segments
+    // 3. Sequential synthesis of main text segments (Gnani allows 1 concurrent request)
     const textSegs = parts.filter(p => p.type === 'text').map(p => p.val);
-    const segBufs = await Promise.all(textSegs.map(s => synthesizeText(s, script.main.language, script.main.voice)));
+    const segBufs = [];
+    for (const s of textSegs) {
+      segBufs.push(await synthesizeText(s, script.main.language, script.main.voice));
+    }
 
     // 4. Interleave audio + silence (byteRate = 32000 for 16kHz 16-bit mono)
     const byteRate = 32000;
