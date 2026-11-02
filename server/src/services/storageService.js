@@ -39,7 +39,7 @@ export async function resolveAudioUrl(record) {
     try {
       return await getSignedAudioUrl(record.audio_path, 3600);
     } catch (signError) {
-      console.warn(`[Storage] Signed URL generation failed for ${record.audio_path}: ${signError.message}`);
+      console.error(`[Storage] Signed URL generation FAILED for ${record.audio_path}, falling back to stored audio_url: ${signError.message}`);
     }
   }
   // Legacy fallback: pre-migration rows or signed-URL failure

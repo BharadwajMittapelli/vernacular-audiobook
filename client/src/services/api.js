@@ -109,6 +109,10 @@ export function updateChapter(chapterId, payload) {
   return api.put(`/api/studio/chapters/${chapterId}`, payload).then((res) => res.data);
 }
 
+export function normalizeChapter(chapterId) {
+  return api.post(`/api/chapters/${chapterId}/normalize`).then((res) => res.data);
+}
+
 export function uploadDocument(file, language) {
   const form = new FormData();
   form.append('file', file);
@@ -151,8 +155,8 @@ export function getBookStatus(bookId) {
   return api.get(`/api/studio/${bookId}/status`).then((res) => res.data);
 }
 
-export function createBook({ title, chapters }) {
-  return api.post('/api/studio', { title, chapters }).then((res) => res.data);
+export function createBook({ title, chapters, language }) {
+  return api.post('/api/studio', { title, chapters, language }).then((res) => res.data);
 }
 
 export function deleteBook(bookId) {

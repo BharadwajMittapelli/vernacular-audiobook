@@ -8,7 +8,7 @@ import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { StudioLayout } from '../components/layout/StudioLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
-import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport, logPlayback } from '../services/api.js';
+import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport, logPlayback, normalizeChapter } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
@@ -212,6 +212,7 @@ function Dashboard() {
               chapterId: ch.id,
               title: ch.title,
               text: chapterRes.chapter.text_content,
+              normalized: chapterRes.chapter.normalized !== false,
             };
           })
         );
@@ -361,6 +362,9 @@ function Dashboard() {
   // PUT response returns { title, char_count, ... } — merge into local state,
   // keeping both id keys (uploads create chapters with `id`, GET returns `chapterId`).
   const handleChapterSaved = (c) => {
+    // A manual edit can flip normalized=false server-side; allow the JIT
+    // auto-trigger to fire again for this chapter.
+    if (c.normalized === false) autoNormalizeRef.current = null;
     setBook((b) => ({
       ...b,
       chapters: b.chapters.map((ch, i) =>
@@ -371,6 +375,57 @@ function Dashboard() {
               id: ch.id ?? c.id,
               chapterId: ch.chapterId ?? c.id,
               text: c.text_content,
+            }
+          : ch
+      ),
+    }));
+  };
+
+  // JIT script optimization: translate an unnormalized chapter before it
+  // reaches TTS. Returns the text to synthesize; throws on failure so the
+  // caller aborts synthesis (never sends raw unoptimized text).
+  const ensureChapterNormalized = React.useCallback(async (ch) => {
+    if (!ch) return '';
+    if (ch.normalized !== false) return ch.text;
+    const res = await normalizeChapter(ch.chapterId);
+    if (!res?.success || !res.chapter) {
+      throw new Error(res?.error || 'Script optimization failed. Please retry.');
+    }
+    const newText = res.chapter.text_content ?? ch.text;
+    setBook((b) => ({
+      ...b,
+      chapters: b.chapters.map((c) =>
+        c.chapterId === ch.chapterId
+          ? { ...c, text: newText, normalized: true, char_count: res.chapter.char_count ?? c.char_count }
+          : c
+      ),
+    }));
+    return newText;
+  }, []);
+
+  // Opening a raw chapter auto-optimizes it once per chapter visit.
+  const autoNormalizeRef = React.useRef(null);
+  React.useEffect(() => {
+    const ch = book?.chapters?.[activeIdx];
+    if (!ch || ch.normalized !== false) return;
+    if (autoNormalizeRef.current === ch.chapterId) return;
+    autoNormalizeRef.current = ch.chapterId;
+    ensureChapterNormalized(ch).catch((err) => {
+      setError(err.response?.data?.error || err.message || 'Script optimization failed. Open the Transcript tab and retry.');
+    });
+  }, [book?.chapters, activeIdx, ensureChapterNormalized]);
+
+  // Normalize-button result: merge the optimized script into local state.
+  const handleChapterNormalized = (c) => {
+    setBook((b) => ({
+      ...b,
+      chapters: b.chapters.map((ch, i) =>
+        i === activeIdx
+          ? {
+              ...ch,
+              normalized: c?.normalized !== false,
+              text: c?.text_content ?? ch.text,
+              char_count: c?.char_count ?? ch.char_count,
             }
           : ch
       ),
@@ -391,9 +446,12 @@ function Dashboard() {
         const voiceProfile = config?.voiceProfile ?? selectedVoice;
         const selectedSpeed = config?.speed ?? speed;
 
+        // JIT: block synthesis if this chapter still needs script optimization.
+        const scriptText = await ensureChapterNormalized(chapter);
+
         const result = await synthesizeAudio({
           chapterId: chapter.chapterId,
-          text: cleanOcrText(chapter.text),
+          text: cleanOcrText(scriptText),
           language,
           voiceProfile,
           speed: selectedSpeed,
@@ -414,8 +472,9 @@ function Dashboard() {
     setIsGenerating(true);
     setError(null);
     try {
+      const scriptText = await ensureChapterNormalized(chapter);
       const blob = await spatialPreview({
-        chapterText: cleanOcrText(chapter.text),
+        chapterText: cleanOcrText(scriptText),
         bookId: book?.id,
       });
       const url = URL.createObjectURL(blob);
@@ -431,11 +490,9 @@ function Dashboard() {
   const generateAll = async () => {
     setIsBulk(true);
     setError(null);
-    // Optimistically mark processing so the poll loop kicks in immediately
-    setBook((b) => ({ ...b, status: 'processing' }));
-    try {
-      const res = await synthesizeAsync({
-        chapters: book.chapters.map((ch) => ({
+    const postBulk = (chapters) =>
+      synthesizeAsync({
+        chapters: chapters.map((ch) => ({
           chapterId: ch.chapterId,
           text: cleanOcrText(ch.text),
           language: selectedLanguage,
@@ -443,13 +500,45 @@ function Dashboard() {
           speed,
         })),
       });
+    try {
+      // JIT: serialize script optimization for raw chapters before queueing.
+      let chapters = book.chapters;
+      const pendingNormalize = chapters.filter((ch) => ch.normalized === false);
+      for (let i = 0; i < pendingNormalize.length; i++) {
+        const ch = pendingNormalize[i];
+        setBulkStatus(`Optimizing script ${i + 1}/${pendingNormalize.length}…`);
+        const text = await ensureChapterNormalized(ch);
+        chapters = chapters.map((c) => (c.chapterId === ch.chapterId ? { ...c, text, normalized: true } : c));
+      }
+      setBulkStatus(null);
+      // Optimistically mark processing so the poll loop kicks in immediately
+      setBook((b) => ({ ...b, status: 'processing' }));
+      let res;
+      try {
+        res = await postBulk(chapters);
+      } catch (err) {
+        const d = err.response?.data;
+        if (err.response?.status === 409 && Array.isArray(d?.chapter_ids) && d.chapter_ids.length) {
+          // Raced a fresh manual edit: optimize the listed chapters, retry once.
+          for (const id of d.chapter_ids) {
+            const target = chapters.find((c) => c.chapterId === id);
+            if (!target) continue;
+            const text = await ensureChapterNormalized(target);
+            chapters = chapters.map((c) => (c.chapterId === id ? { ...c, text, normalized: true } : c));
+          }
+          res = await postBulk(chapters);
+        } else {
+          throw err;
+        }
+      }
       setBulkStatus(`Queued ${res.queued}, cached ${res.cached} of ${res.totalChapters} chapters`);
     } catch (err) {
+      setBook((b) => (b ? { ...b, status: null } : b));
       const d = err.response?.data;
       setError(
         d?.required
           ? `${d.error} (need ${d.required}, have ${d.available})`
-          : d?.error || 'Bulk synthesis failed'
+          : d?.error || err.message || 'Bulk synthesis failed'
       );
     } finally {
       setIsBulk(false);
@@ -550,6 +639,7 @@ function Dashboard() {
       speed={speed}
       estimatedCredits={estimatedCredits}
       isGenerating={isGenerating}
+      needsNormalize={chapter?.normalized === false}
     />
   );
 
@@ -640,7 +730,7 @@ function Dashboard() {
 
             {activeTab === 'transcript' && (
               <div>
-                <TranscriptEditor chapter={chapter} onSaved={handleChapterSaved} onError={setError} />
+                <TranscriptEditor chapter={chapter} onSaved={handleChapterSaved} onNormalized={handleChapterNormalized} onError={setError} />
               </div>
             )}
 
@@ -794,7 +884,7 @@ function Dashboard() {
               ) : (
                 <>
                   <Zap className="h-4 w-4" />
-                  {isSpatialEnabled ? 'Generate Spatial' : 'Generate Audio'}
+                  {isSpatialEnabled ? 'Generate Spatial' : chapter?.normalized === false ? 'Optimize & Generate Audio' : 'Generate Audio'}
                 </>
               )}
             </button>

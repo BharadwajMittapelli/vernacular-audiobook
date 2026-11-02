@@ -1,12 +1,15 @@
 import React from 'react';
-import { Wand2 } from 'lucide-react';
-import { updateChapter } from '../../services/api.js';
+import { Wand2, Sparkles } from 'lucide-react';
+import { updateChapter, normalizeChapter } from '../../services/api.js';
 import { cleanOcrText } from '../../services/textNormalizer.js';
 
-export function TranscriptEditor({ chapter, onSaved, onError }) {
+export function TranscriptEditor({ chapter, onSaved, onNormalized, onError }) {
   const chapterId = chapter?.chapterId ?? chapter?.id;
   const [draft, setDraft] = React.useState(chapter?.text || '');
   const [saving, setSaving] = React.useState(false);
+  const [optimizing, setOptimizing] = React.useState(false);
+
+  const needsNormalize = chapter?.normalized === false;
 
   // Reset only when switching chapters; a same-chapter text refresh (e.g. after
   // save) must not clobber an in-progress draft.
@@ -23,6 +26,22 @@ export function TranscriptEditor({ chapter, onSaved, onError }) {
 
   const handleClean = () => {
     setDraft((d) => cleanOcrText(d));
+  };
+
+  const handleOptimize = async () => {
+    setOptimizing(true);
+    onError(null);
+    try {
+      const res = await normalizeChapter(chapterId);
+      if (res?.success && res.chapter?.text_content) {
+        setDraft(res.chapter.text_content);
+      }
+      onNormalized?.(res.chapter || { id: chapterId, normalized: true });
+    } catch (err) {
+      onError(err.response?.data?.error || err.message || 'Script optimization failed. Please retry.');
+    } finally {
+      setOptimizing(false);
+    }
   };
 
   const handleSave = async () => {
@@ -51,8 +70,29 @@ export function TranscriptEditor({ chapter, onSaved, onError }) {
               Unsaved changes
             </span>
           )}
+          {needsNormalize && !dirty && (
+            <span className="flex items-center gap-1.5 text-amber-600 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              Script not optimized for TTS
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          {needsNormalize && (
+            <button
+              onClick={handleOptimize}
+              disabled={optimizing || dirty || saving}
+              title="Translates the script to the book language with transliterated loanwords, ready for TTS"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-terracotta text-terracotta-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            >
+              {optimizing ? (
+                <span className="w-3.5 h-3.5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              {optimizing ? 'Optimizing…' : 'Optimize Script for TTS'}
+            </button>
+          )}
           <button
             onClick={handleClean}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm text-foreground hover:bg-muted transition-colors"

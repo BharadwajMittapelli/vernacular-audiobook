@@ -5,6 +5,7 @@ import { stripMarkdown } from '../services/textProcessor.js';
 import { synthesizeText } from '../services/ttsProvider.js';
 import { generateSpatialScript } from '../services/llmDirector.js';
 import { classifyBookGenre } from '../services/genreClassifier.js';
+import { needsNormalization } from '../services/transcriptNormalizer.js';
 import { buildSilenceBuffer } from '../services/audioStitcher.js';
 import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
@@ -229,7 +230,10 @@ router.post('/spatial-preview', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { title, chapters, language } = req.body;
-    const effectiveLang = (language && VALID_LANGUAGES.includes(language)) ? language : 'en-IN';
+    if (!language || !VALID_LANGUAGES.includes(language)) {
+      return res.status(400).json({ success: false, error: `Missing or invalid language. Valid: ${VALID_LANGUAGES.join(', ')}` });
+    }
+    const effectiveLang = language;
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ success: false, error: 'Missing or empty title' });
@@ -273,6 +277,8 @@ router.post('/', async (req, res) => {
         sequence_number: i + 1,
         title: ch.title.trim(),
         text_content: cleanText,
+        raw_text: cleanText,
+        normalized: !needsNormalization(effectiveLang, cleanText),
         char_count: cleanText.length,
         estimated_duration_seconds: Math.ceil(cleanText.length / 15),
         status: 'pending',
@@ -294,7 +300,7 @@ router.post('/', async (req, res) => {
 
     const { data: insertedChapters } = await supabase
       .from('chapters')
-      .select('id, sequence_number, title, char_count, estimated_duration_seconds, status')
+      .select('id, sequence_number, title, char_count, estimated_duration_seconds, status, normalized')
       .eq('book_id', book.id)
       .order('sequence_number', { ascending: true });
 
@@ -318,10 +324,16 @@ router.post('/', async (req, res) => {
       chapters: insertedChapters || [],
     });
   } catch (error) {
-    console.error('POST /studio error:', error);
+    console.error('POST /studio error:', {
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      details: error.details,
+      hint: error.hint,
+    });
     // Expose actual DB error in development for debugging
     const devError = process.env.NODE_ENV === 'development'
-      ? { message: error.message, code: error.code }
+      ? { message: error.message, code: error.code, details: error.details, hint: error.hint }
       : undefined;
     res.status(500).json({ success: false, error: 'Internal server error', ...(devError && { debug: devError }) });
   }
@@ -354,7 +366,7 @@ router.post('/:bookId/synthesize-all', bulkLimiter, async (req, res) => {
 
     const { data: pendingChapters, error: chaptersError } = await supabase
       .from('chapters')
-      .select('id, char_count, text_content')
+      .select('id, char_count, text_content, normalized')
       .eq('book_id', bookId)
       .in('status', ['pending', 'failed'])
       .order('sequence_number');
@@ -362,6 +374,15 @@ router.post('/:bookId/synthesize-all', bulkLimiter, async (req, res) => {
     if (chaptersError) throw chaptersError;
     if (!pendingChapters.length) {
       return res.status(400).json({ success: false, error: 'No chapters need processing' });
+    }
+
+    const unnormalizedIds = pendingChapters.filter((ch) => ch.normalized === false).map((ch) => ch.id);
+    if (unnormalizedIds.length) {
+      return res.status(409).json({
+        success: false,
+        error: 'Chapters require script optimization before synthesis',
+        chapter_ids: unnormalizedIds,
+      });
     }
 
     if (!isCreditBypassed()) {
@@ -679,7 +700,7 @@ router.get('/:bookId', async (req, res) => {
 
     const { data: chapters, error: chaptersError } = await supabase
       .from('chapters')
-      .select('id, sequence_number, title, char_count, estimated_duration_seconds, status')
+      .select('id, sequence_number, title, char_count, estimated_duration_seconds, status, normalized')
       .eq('book_id', bookId)
       .order('sequence_number', { ascending: true });
 
@@ -739,7 +760,7 @@ router.get('/chapters/:chapterId', async (req, res) => {
 
     const { data: chapter, error: chapterError } = await supabase
       .from('chapters')
-      .select('id, book_id, sequence_number, title, text_content, char_count, estimated_duration_seconds, status, created_at')
+      .select('id, book_id, sequence_number, title, text_content, char_count, estimated_duration_seconds, status, normalized, created_at')
       .eq('id', chapterId)
       .eq('user_id', req.user.id)
       .single();
@@ -789,7 +810,7 @@ router.put('/chapters/:chapterId', async (req, res) => {
 
     const { data: chapter, error: chapterError } = await supabase
       .from('chapters')
-      .select('id, status')
+      .select('id, status, language')
       .eq('id', chapterId)
       .eq('user_id', req.user.id)
       .single();
@@ -819,6 +840,9 @@ router.put('/chapters/:chapterId', async (req, res) => {
       updates.char_count = cleanText.length;
       updates.estimated_duration_seconds = Math.ceil(cleanText.length / 15);
       updates.status = 'pending';
+      // Text edits re-open the JIT normalization gate for Indic chapters;
+      // title-only updates never reach this branch and keep normalization state.
+      updates.normalized = !needsNormalization(chapter.language, cleanText);
     }
 
     const { data: updated, error: updateError } = await supabase
@@ -826,7 +850,7 @@ router.put('/chapters/:chapterId', async (req, res) => {
       .update(updates)
       .eq('id', chapterId)
       .eq('user_id', req.user.id)
-      .select('id, sequence_number, title, text_content, char_count, estimated_duration_seconds, status')
+      .select('id, sequence_number, title, text_content, char_count, estimated_duration_seconds, status, normalized')
       .single();
 
     if (updateError) throw updateError;
@@ -847,13 +871,21 @@ router.post('/chapters/:chapterId/synthesize', chapterTtsLimiter, async (req, re
     // Fetch and validate the chapter
     const { data: chapter, error: chapterError } = await supabase
       .from('chapters')
-      .select('id, text_content, char_count, status')
+      .select('id, text_content, char_count, status, normalized')
       .eq('id', chapterId)
       .eq('user_id', req.user.id)
       .single();
 
     if (chapterError || !chapter) {
       return res.status(404).json({ success: false, error: 'Chapter not found' });
+    }
+
+    if (chapter.normalized === false) {
+      return res.status(409).json({
+        success: false,
+        error: 'Chapter requires script optimization before synthesis',
+        chapter_id: chapterId,
+      });
     }
 
     if (chapter.status === 'completed') {

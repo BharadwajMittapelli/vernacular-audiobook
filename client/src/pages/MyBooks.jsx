@@ -227,10 +227,10 @@ export default function MyBooks() {
   }, []);
 
   const handleDocumentLoaded = useCallback(
-    async ({ title, chapters }) => {
+    async ({ title, chapters, language }) => {
       setUploadError(null);
       try {
-        const res = await createBook({ title, chapters });
+        const res = await createBook({ title, chapters, language: language || 'en-IN' });
         if (!res || !res.success) throw new Error(res?.error || 'Failed to create book');
         setShowUploader(false);
         setBooks((prev) => [res.book, ...prev]);

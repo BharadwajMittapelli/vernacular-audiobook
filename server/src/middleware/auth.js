@@ -4,7 +4,9 @@ export async function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
 
   if (!header) {
-    if (process.env.NODE_ENV === 'development') {
+    // ponytail: opt-in only — NODE_ENV=development alone must never impersonate a user
+    // on a shared host, that silently writes books/chapters under the mock uuid.
+    if (process.env.NODE_ENV === 'development' && process.env.ALLOW_DEV_MOCK_USER === 'true') {
       req.user = { id: '00000000-0000-0000-0000-000000000001' };
       return next();
     }
@@ -35,6 +37,7 @@ export async function authMiddleware(req, res, next) {
     }
 
     req.user = { id: user.id, email: user.email };
+    console.log('[authMiddleware] Resolved user:', req.user.id, req.user.email);
     next();
   } catch (err) {
     console.error('authMiddleware error:', err.message);

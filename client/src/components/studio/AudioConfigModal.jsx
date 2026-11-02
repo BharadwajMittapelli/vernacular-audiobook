@@ -13,6 +13,7 @@ export function AudioConfigModal({
   speed,
   estimatedCredits,
   isGenerating,
+  needsNormalize,
 }) {
   if (!isOpen) return null;
 
@@ -80,9 +81,9 @@ export function AudioConfigModal({
             {isGenerating ? (
               <span className="flex items-center gap-2">
                 <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                Generating…
+                {needsNormalize ? 'Optimizing & generating…' : 'Generating…'}
               </span>
-            ) : 'Generate Audio'}
+            ) : needsNormalize ? 'Optimize & Generate Audio' : 'Generate Audio'}
           </Button>
         </div>
       </div>

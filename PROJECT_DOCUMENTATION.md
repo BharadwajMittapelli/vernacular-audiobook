@@ -151,6 +151,12 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 - **Request Payload:** `{ bookId, chapters: [{ chapterId, text, language, voiceProfile, speed }], idempotencyKey }`  
 - **Response:** 202 with `{ success, jobId, message }`. Each chapter is processed by a BullMQ worker with atomic credit tracking and book-level completion/failure aggregation. Requires `Idempotency-Key` header scoped to the book.  
 
+**Internal API: POST /api/chapters/:chapterId/normalize**  
+- **Purpose:** JIT TTS script optimization (Groq `GROQ_NORMALIZER_MODEL`). Cleans PDF artifacts, translates narrative into the chapter's Indic book language, and preserves English loanwords transliterated into native script (e.g. hospital → హాస్పిటల్). Runs at chapter-open / Generate-Audio time, never at upload.  
+- **Semantics:** Always translates from `raw_text` (retries can't double-translate). `409` if the chapter is `processing` or already `normalized`. Chapters whose language is `en-IN`/`hi-en` or whose text already contains native script are skipped server-side (`{ success, normalized: true, skipped: true }`, no Groq call). On Groq failure: `502`, database untouched, chapter stays `normalized=false`.  
+- **Response:** `{ success, normalized, chapter: { id, text_content, char_count, ... }, preserved_words }`.  
+- **Synthesis invariant:** any synthesis path (`/api/studio/chapters/:id/synthesize`, `/api/studio/:bookId/synthesize-all`, `/api/audio/synthesize`, `/api/audio/synthesize-async`) returns `409` with `chapter_id`/`chapter_ids` while a referenced chapters row has `normalized=false`. `PUT /api/studio/chapters/:id` with `text_content` re-evaluates the flag (Latin-script edit on an Indic book flips it back to `false`).  
+
 **Internal API: GET /api/storefront/embed/:generationId**  
 - Public endpoint (no auth). Returns `{ success, generationId, chapterId, audioUrl, durationSeconds, alignment }` with wildcard CORS. `audioUrl` is a fresh signed URL (1h TTL).
 
@@ -232,8 +238,8 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 ## 10. Deployment & Testing Documents
 
 **Deployment Architecture:**  
-- **Backend (Render):** Connect GitHub repo → Select `/server` → Build command: `npm run build` → Start command: `node dist/index.js`. Add ENV variables to Render dashboard.  
-- **Frontend (Vercel):** Connect GitHub repo → Select `/client` → Preset: Vite. Add `VITE_API_URL` pointing to Render endpoint.
+- **Backend (Render/Railway):** root `/server`, build `npm install`, start `node src/index.js` (there is no build step / `dist/`). Env: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET_NAME=audiobook`, `NODE_ENV=production`, `FRONTEND_URL` (comma-separated Vercel origins), `GNANI_*`, `TTS_PROVIDER`, `TTS_FALLBACK_ENABLED`, `GROQ_API_KEY`, `GROQ_{DIRECTOR,CLASSIFIER,NORMALIZER}_MODEL`, optional `REDIS_URL`.  
+- **Frontend (Vercel):** root `/client`, preset Vite. Env: `VITE_API_URL` (backend URL), `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_FRONTEND_URL`. `VITE_*` are inlined at build time — changing them requires a **redeploy**, not just a restart.
 
 **Testing Protocol (Validation Gates — must pass before merge):**
 
@@ -333,13 +339,19 @@ npm run install:all
 GNANI_API_KEY_ID=your_gnani_key
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_BUCKET_NAME=audiobook
 PORT=4001
 FRONTEND_URL=https://your-vercel-app.vercel.app
+NODE_ENV=production
+GROQ_API_KEY=your_groq_key
 ```
 
 **Client** (`client/.env`):
 ```env
 VITE_API_URL=https://your-render-app.onrender.com
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
+VITE_FRONTEND_URL=https://your-vercel-app.vercel.app
 ```
 
 ### Development
@@ -400,8 +412,8 @@ Response:
 
 ### Deployment
 
-- **Backend**: Render Web Service (root: `/server`, build: `npm run build`, start: `node dist/index.js`)
-- **Frontend**: Vercel (root: `/client`, preset: Vite)
+- **Backend**: Render/Railway Web Service (root: `/server`, build: `npm install`, start: `node src/index.js`)
+- **Frontend**: Vercel (root: `/client`, preset: Vite) — redeploy after any `VITE_*` change
 
 ### Security
 

@@ -5,11 +5,13 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { authMiddleware } from './middleware/auth.js';
+import { parseAllowedOrigins } from './config/cors.js';
 import audioRouter from './routes/audioRoutes.js';
 import storefrontRouter from './routes/storefrontRoutes.js';
 import voiceRouter from './routes/voiceRoutes.js';
 import documentRouter from './routes/documentRoutes.js';
 import studioRoutes from './routes/studioRoutes.js';
+import chapterRoutes from './routes/chapterRoutes.js';
 import settingsRouter from './routes/settingsRoutes.js';
 import libraryRoutes from './routes/libraryRoutes.js';
 import { isCreditBypassed } from './services/creditService.js';
@@ -24,7 +26,12 @@ if (isCreditBypassed()) {
 const app = express();
 const PORT = process.env.PORT || 4001;
 
-const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5175';
+// ponytail: comma-separated origin allowlist. Every deploy must set FRONTEND_URL
+// or prod silently accepts only localhost and browsers see "all API calls fail".
+const allowedOrigins = parseAllowedOrigins(process.env.FRONTEND_URL);
+if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
+  console.warn('[CORS] FRONTEND_URL is unset in production — deployed frontend origins will be blocked.');
+}
 
 // CRITICAL: Trust proxy for Render/load balancer deployments
 // Without this, rate limiter sees all requests as coming from the load balancer IP
@@ -38,7 +45,7 @@ const corsDelegate = (req, callback) => {
     return callback(null, { origin: '*' });
   }
   callback(null, {
-    origin: allowedOrigin,
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
@@ -99,6 +106,9 @@ app.use('/api/documents', documentRouter);
 
 // Studio API — protected by authMiddleware.
 app.use('/api/studio', authMiddleware, studioRoutes);
+
+// Per-chapter JIT operations (script optimization) — protected by authMiddleware.
+app.use('/api/chapters', authMiddleware, chapterRoutes);
 
 // Settings API — protected by authMiddleware.
 app.use('/api/settings', authMiddleware, settingsRouter);

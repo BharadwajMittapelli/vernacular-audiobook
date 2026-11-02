@@ -18,6 +18,24 @@ import { queue } from '../queues/synthesisQueue.js';
 
 const router = express.Router();
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// JIT normalization invariant: a chapters row flagged normalized=false holds
+// raw (unoptimized) text that must never reach TTS. Free-text callers whose
+// chapterId has no chapters row (legacy stateless flow) are unaffected.
+async function findUnnormalizedChapterIds(chapterIds, userId) {
+  const uuidIds = [...new Set(chapterIds.filter((id) => typeof id === 'string' && UUID_RE.test(id)))];
+  if (!uuidIds.length) return [];
+  const { data, error } = await supabase
+    .from('chapters')
+    .select('id, normalized')
+    .in('id', uuidIds)
+    .eq('user_id', userId)
+    .eq('normalized', false);
+  if (error) throw error;
+  return (data || []).map((c) => c.id);
+}
+
 // Polling configuration for idempotency race condition
 const MAX_ATTEMPTS = 15;
 const POLL_INTERVAL_MS = 500;
@@ -122,13 +140,29 @@ router.post(
         });
       }
 
+      // JIT normalization gate: block raw text from reaching TTS engines.
+      try {
+        const gateUserId = req.user?.id || '00000000-0000-0000-0000-000000000001';
+        const unnormalized = await findUnnormalizedChapterIds([chapterId], gateUserId);
+        if (unnormalized.length) {
+          return res.status(409).json({
+            success: false,
+            error: 'Chapter requires script optimization before synthesis',
+            chapter_id: chapterId,
+          });
+        }
+      } catch (guardErr) {
+        console.error('Normalization guard check failed:', guardErr.message);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+
       const cleanText = stripMarkdown(text);
       const generationId = uuidv4();
       const userId = req.user?.id || '00000000-0000-0000-0000-000000000001';
       const creditsUsed = req.creditsUsed || 0;
 
       // Determine if chapterId is a UUID; if so, populate chapter_uuid for FK consistency
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(chapterId);
+      const isUuid = UUID_RE.test(chapterId);
 
       // Insert a 'processing' placeholder BEFORE synthesis so a concurrent
       // request with the same Idempotency-Key hits the unique constraint and
@@ -351,6 +385,22 @@ router.post('/synthesize-async', async (req, res) => {
           error: 'Each chapter must have: chapterId, text, language, voiceProfile, speed, idempotencyKey',
         });
       }
+    }
+
+    // JIT normalization gate: reject the whole batch until optimized (client
+    // normalizes the listed chapters via POST /api/chapters/:id/normalize).
+    try {
+      const unnormalized = await findUnnormalizedChapterIds(chapters.map((ch) => ch.chapterId), userId);
+      if (unnormalized.length) {
+        return res.status(409).json({
+          success: false,
+          error: 'Chapters require script optimization before synthesis',
+          chapter_ids: unnormalized,
+        });
+      }
+    } catch (guardErr) {
+      console.error('Normalization guard check failed:', guardErr.message);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
     }
 
     // Upfront credit pre-check (prevents partial-book wallet drain)

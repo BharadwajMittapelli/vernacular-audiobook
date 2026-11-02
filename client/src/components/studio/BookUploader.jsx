@@ -57,7 +57,7 @@ export function BookUploader({ onDocumentLoaded }) {
           if (!res || typeof res.title !== 'string' || !Array.isArray(res.chapters)) {
             throw new Error('Invalid server response: expected { title, chapters }');
           }
-          onDocumentLoaded(res);
+          onDocumentLoaded({ ...res, language: res.language || language });
         })
         .catch((err) =>
           setMsg({ kind: 'error', text: err.response?.data?.error || err.message || 'Upload failed' })
@@ -73,7 +73,7 @@ export function BookUploader({ onDocumentLoaded }) {
       if (!chapters.length) {
         return setMsg({ kind: 'error', text: 'No readable text found in file' });
       }
-      onDocumentLoaded({ title: file.name.replace(/\.[^.]+$/, ''), chapters });
+      onDocumentLoaded({ title: file.name.replace(/\.[^.]+$/, ''), chapters, language });
     };
     reader.onerror = () => setMsg({ kind: 'error', text: 'Failed to read file' });
     reader.readAsText(file);
