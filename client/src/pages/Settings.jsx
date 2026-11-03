@@ -20,7 +20,7 @@ export default function Settings() {
     <AppLayout activePath="/settings" onNavClick={navigate}>
       <div className="max-w-7xl mx-auto px-8 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-serif font-semibold text-foreground">Settings</h1>
+          <h1 className="text-3xl font-semibold text-foreground">Settings</h1>
           <p className="text-muted-foreground mt-1 text-sm">Manage your account, preferences, and audio settings.</p>
         </div>
 

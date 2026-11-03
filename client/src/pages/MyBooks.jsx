@@ -12,8 +12,8 @@ import { FeatureCards } from '../components/books/FeatureCards.jsx';
 import { ShareDialog } from '../components/books/ShareDialog.jsx';
 
 // ... (keep constants and helper functions: TABS, BOOKSHELF_LIMIT, formatRelativeTime)
-const TABS = ['bookshelf', 'recent', 'shared', 'favorites'];
-const BOOKSHELF_LIMIT = 5;
+const TABS = ['recent', 'shared', 'favorites'];
+const RECENT_DISPLAY_LIMIT = 5;
 
 function formatRelativeTime(dateStr) {
   if (!dateStr) return '';
@@ -52,7 +52,7 @@ export default function MyBooks() {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('bookshelf');
+  const [activeTab, setActiveTab] = useState('recent');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -247,18 +247,18 @@ export default function MyBooks() {
     (book.title || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const sortedBooks = [...books].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  const bookshelfIds = new Set(sortedBooks.slice(0, BOOKSHELF_LIMIT).map((b) => b.id));
-  const bookshelfBooks = sortedBooks.filter((b) => bookshelfIds.has(b.id));
-  const recentBooksFull = sortedBooks.filter((b) => !bookshelfIds.has(b.id));
-  
-  const displayBooks = activeTab === 'bookshelf' ? bookshelfBooks.filter(b => (b.title || '').toLowerCase().includes(searchQuery.toLowerCase())) :
-                      activeTab === 'recent' ? recentBooksFull.filter(b => (b.title || '').toLowerCase().includes(searchQuery.toLowerCase())) :
-                      filteredBooks;
+  const sortedByRecent = [...books]
+    .filter((b) => b.last_opened_at)
+    .sort((a, b) => new Date(b.last_opened_at) - new Date(a.last_opened_at));
+
+  const recentBooks = sortedByRecent.slice(0, RECENT_DISPLAY_LIMIT);
+
+  const displayBooks = activeTab === 'recent'
+    ? recentBooks.filter((b) => (b.title || '').toLowerCase().includes(searchQuery.toLowerCase()))
+    : filteredBooks;
 
   const tabsWithCounts = [
-    { key: 'bookshelf', label: 'Bookshelf', count: bookshelfBooks.length },
-    { key: 'recent', label: 'Recent', count: recentBooksFull.length },
+    { key: 'recent', label: 'Recent', count: recentBooks.length },
     { key: 'shared', label: 'Shared' },
     { key: 'favorites', label: 'Favorites' },
   ];
@@ -300,6 +300,14 @@ export default function MyBooks() {
               {count !== undefined && <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">{count}</span>}
             </button>
           ))}
+          {activeTab === 'recent' && (
+            <button
+              onClick={() => navigate('/recent')}
+              className="text-sm font-medium text-terracotta hover:underline ml-auto"
+            >
+              View All
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3 mb-6">

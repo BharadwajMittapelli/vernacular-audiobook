@@ -21,7 +21,7 @@ export function LibraryTopBar({
     <div className="mb-0">
       {/* Stacked title */}
       <div className="mb-4">
-        <h1 className="text-3xl font-serif font-bold text-foreground tracking-tight">
+        <h1 className="text-3xl font-bold text-foreground tracking-tight">
           Audio Library
         </h1>
         <p className="text-muted-foreground text-sm mt-1">

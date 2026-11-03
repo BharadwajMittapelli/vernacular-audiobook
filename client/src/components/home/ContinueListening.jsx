@@ -5,7 +5,7 @@ export function ContinueListening({ onViewAll }) {
   return (
     <div className="mt-8 mb-8">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-serif text-xl font-semibold text-foreground">Continue Listening</h2>
+        <h2 className="text-xl font-semibold text-foreground">Continue Listening</h2>
         <button
           onClick={onViewAll}
           className="text-sm text-terracotta font-medium hover:underline flex items-center gap-1"
