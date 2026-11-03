@@ -28,23 +28,13 @@ router.get('/all-audio', async (req, res) => {
     // Query 1: books with last_opened_at
     const { data: books, error: booksError } = await supabase
       .from('books')
-      .select('id, title, cover_url, last_opened_at')
+      .select('id, title, cover_url, last_opened_at, total_chapters')
       .eq('user_id', userId);
 
     if (booksError) throw booksError;
     const booksMap = new Map((books || []).map((b) => [b.id, b]));
 
-    // Query 2: completed chapters
-    const { data: chapters, error: chaptersError } = await supabase
-      .from('chapters')
-      .select('id, book_id, sequence_number, title, language, created_at')
-      .eq('user_id', userId)
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false });
-
-    if (chaptersError) throw chaptersError;
-
-    // Query 3: latest audio generations per chapter
+    // Query 2: latest audio generations per chapter
     const { data: generations, error: genError } = await supabase
       .from('audio_generations')
       .select('chapter_uuid, chapter_id, audio_path, audio_url, duration, language, created_at')
@@ -63,6 +53,18 @@ router.get('/all-audio', async (req, res) => {
         latestGenMap.set(key, gen);
       }
     }
+
+    // Query 3: chapter metadata for the generation rows (no status filter — generations are the source of truth)
+    const chapterIds = [...latestGenMap.keys()];
+    const { data: chapters, error: chaptersError } = chapterIds.length > 0
+      ? await supabase
+          .from('chapters')
+          .select('id, book_id, sequence_number, title, language, created_at')
+          .in('id', chapterIds)
+          .eq('user_id', userId)
+      : { data: [], error: null };
+
+    if (chaptersError) throw chaptersError;
 
     // Flatten
     const items = [];
@@ -99,6 +101,7 @@ router.get('/all-audio', async (req, res) => {
         audioUrl,
         createdAt: ch.created_at,
         bookLastOpenedAt: book.last_opened_at,
+        totalChapters: book.total_chapters ?? null,
       });
     }
 
@@ -328,7 +331,7 @@ router.get('/playback/history', async (req, res) => {
   }
 });
 
-// GET /by-book — Books with played chapters grouped by book
+// GET /by-book — Books with chapters that have completed audio generations, grouped by book
 router.get('/by-book', async (req, res) => {
   const userId = req.user?.id;
   if (!userId) {
@@ -336,62 +339,100 @@ router.get('/by-book', async (req, res) => {
   }
 
   try {
+    // Query 1: all books for the user (need total_chapters)
+    const { data: books, error: booksError } = await supabase
+      .from('books')
+      .select('id, title, cover_url, total_chapters')
+      .eq('user_id', userId);
+
+    if (booksError) throw booksError;
+    const booksMap = new Map((books || []).map((b) => [b.id, b]));
+
+    // Query 2: completed audio generations (source of truth for "has audio")
+    const { data: generations, error: genError } = await supabase
+      .from('audio_generations')
+      .select('chapter_uuid, chapter_id, duration, language, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false });
+
+    if (genError) throw genError;
+
+    // Keep latest generation per chapter (key = chapter_uuid, fallback chapter_id)
+    const latestGenMap = new Map();
+    for (const gen of generations || []) {
+      const key = gen.chapter_uuid || gen.chapter_id;
+      if (!key) continue;
+      if (!latestGenMap.has(key)) {
+        latestGenMap.set(key, gen);
+      }
+    }
+
+    // Query 3: playback history for played-chapter counts per book
     const { data: history, error: historyError } = await supabase
       .from('playback_history')
-      .select(`
-        id,
-        book_id,
-        chapter_id,
-        last_played_at,
-        books!inner (id, title, cover_url, total_chapters),
-        chapters!inner (id, title, sequence_number, language, estimated_duration_seconds)
-      `)
-      .eq('user_id', userId)
-      .order('last_played_at', { ascending: false });
+      .select('book_id, chapter_id')
+      .eq('user_id', userId);
 
     if (historyError) throw historyError;
 
-    const bookMap = new Map();
-
+    // Count played chapters per book
+    const playedCountByBook = new Map();
     for (const h of history || []) {
-      const bookId = h.book_id;
-      const book = h.books;
-      const chapter = h.chapters;
+      const count = playedCountByBook.get(h.book_id) ?? 0;
+      playedCountByBook.set(h.book_id, count + 1);
+    }
 
-      if (!book || !chapter) continue;
+    // Query 4: chapter metadata for the generation rows
+    const chapterIds = [...latestGenMap.keys()];
+    const { data: chapters, error: chaptersError } = await supabase
+      .from('chapters')
+      .select('id, book_id, sequence_number, title, language, estimated_duration_seconds, created_at')
+      .in('id', chapterIds)
+      .order('created_at', { ascending: false });
+
+    if (chaptersError) throw chaptersError;
+
+    // Group by book
+    const bookMap = new Map();
+    for (const ch of chapters || []) {
+      const bookId = ch.book_id;
+      const book = booksMap.get(bookId);
+      if (!book) continue;
 
       if (!bookMap.has(bookId)) {
         bookMap.set(bookId, {
           bookId: book.id,
           bookTitle: book.title,
           coverUrl: book.cover_url,
-          lastPlayedAt: h.last_played_at,
-          playedChaptersCount: 0,
+          lastPlayedAt: ch.created_at,
+          playedChaptersCount: playedCountByBook.get(bookId) ?? 0,
           totalChapters: book.total_chapters,
           chapters: [],
         });
       }
 
       const bookEntry = bookMap.get(bookId);
-      bookEntry.playedChaptersCount += 1;
+      const gen = latestGenMap.get(ch.id);
+
       bookEntry.chapters.push({
-        chapterId: chapter.id,
-        chapterTitle: chapter.title,
-        sequenceNumber: chapter.sequence_number,
-        lastPlayedAt: h.last_played_at,
-        durationSeconds: chapter.estimated_duration_seconds,
-        language: chapter.language,
+        chapterId: ch.id,
+        chapterTitle: ch.title,
+        sequenceNumber: ch.sequence_number,
+        lastPlayedAt: gen?.created_at || ch.created_at,
+        durationSeconds: gen?.duration ?? ch.estimated_duration_seconds,
+        language: gen?.language || ch.language,
       });
     }
 
-    const books = Array.from(bookMap.values())
+    const booksResult = Array.from(bookMap.values())
       .sort((a, b) => new Date(b.lastPlayedAt) - new Date(a.lastPlayedAt))
       .map((book) => ({
         ...book,
         chapters: book.chapters.sort((a, b) => a.sequenceNumber - b.sequenceNumber),
       }));
 
-    res.json({ success: true, books });
+    res.json({ success: true, books: booksResult });
   } catch (err) {
     console.error('GET /api/library/by-book error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });

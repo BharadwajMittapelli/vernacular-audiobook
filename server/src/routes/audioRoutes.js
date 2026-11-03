@@ -330,6 +330,20 @@ router.post(
             status: 'completed',
           })
           .eq('id', targetRowId);
+
+        // Sync chapter status so library queries can find it (non-blocking)
+        try {
+          const { error: chapterStatusErr } = await supabase
+            .from('chapters')
+            .update({ status: 'completed' })
+            .eq('id', chapterId)
+            .eq('user_id', userId);
+          if (chapterStatusErr) {
+            console.warn('[Synthesize] Failed to sync chapter status:', chapterStatusErr.message);
+          }
+        } catch (statusErr) {
+          console.warn('[Synthesize] Chapter status sync error:', statusErr.message);
+        }
       } catch (err) {
         try {
           await refundCredits(userId, cleanText.length, generationId);

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from '../context/NavigateContext.jsx';
-import { getPlaybackHistory, getByBook, getFavorites, addFavorite, removeFavorite, getDownloads, exportBookMp3, getChapterAudio } from '../services/api.js';
+import { getAllLibraryAudio, getFavorites, addFavorite, removeFavorite, getDownloads, exportBookMp3, getChapterAudio } from '../services/api.js';
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { DownloadsView } from '../components/audioLibrary/DownloadsView.jsx';
 import { ByBookView } from '../components/audioLibrary/ByBookView.jsx';
@@ -30,31 +30,20 @@ export default function AudioLibrary() {
   const [bookFilter, setBookFilter] = useState(null);
   const audioUrlCache = useRef(new Map());
 
-  const loadPlaybackHistory = useCallback(async () => {
+  const loadAllAudio = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getPlaybackHistory();
+      const res = await getAllLibraryAudio();
       if (res.success) {
-        const enrichedItems = (res.history || []).map((item) => ({
-          chapterId: item.chapterId,
-          chapterTitle: item.chapterTitle,
-          sequenceNumber: item.sequenceNumber,
-          bookId: item.bookId,
-          bookTitle: item.bookTitle,
-          coverUrl: item.bookCoverUrl,
-          language: item.language || 'en-IN',
-          durationSeconds: item.durationSeconds || 0,
-          audioUrl: null,
-          createdAt: item.lastPlayedAt,
-          bookLastOpenedAt: item.lastPlayedAt,
+        setItems((res.items || []).map((item) => ({
+          ...item,
           voiceName: DEFAULT_VOICE_BY_LANG[item.language] || 'Kaveri',
           flag: LANGUAGE_FLAG[item.language] || '🇮🇳',
           langName: LANGUAGE_NAME[item.language] || 'English',
-        }));
-        setItems(enrichedItems);
+        })));
       } else {
-        setError(res.error || 'Failed to load playback history');
+        setError(res.error || 'Failed to load audio library');
       }
     } catch (err) {
       setError(err.message);
@@ -66,16 +55,45 @@ export default function AudioLibrary() {
   const loadByBook = useCallback(async () => {
     setByBookLoading(true);
     try {
-      const res = await getByBook();
-      if (res.success) {
-        setByBookData(res.books || []);
+      const bookMap = new Map();
+      for (const item of items || []) {
+        const bookId = item.bookId;
+        if (!bookMap.has(bookId)) {
+          bookMap.set(bookId, {
+            bookId,
+            bookTitle: item.bookTitle,
+            coverUrl: item.coverUrl,
+            lastPlayedAt: item.createdAt,
+            playedChaptersCount: 0,
+            totalChapters: item.totalChapters ?? 0,
+            chapters: [],
+          });
+        }
+        const bookEntry = bookMap.get(bookId);
+        bookEntry.playedChaptersCount += 1;
+        bookEntry.chapters.push({
+          chapterId: item.chapterId,
+          chapterTitle: item.chapterTitle,
+          sequenceNumber: item.sequenceNumber,
+          lastPlayedAt: item.createdAt,
+          durationSeconds: item.durationSeconds,
+          language: item.language,
+        });
       }
+      setByBookData(
+        Array.from(bookMap.values())
+          .sort((a, b) => new Date(b.lastPlayedAt) - new Date(a.lastPlayedAt))
+          .map((book) => ({
+            ...book,
+            chapters: book.chapters.sort((a, b) => a.sequenceNumber - b.sequenceNumber),
+          }))
+      );
     } catch (err) {
-      console.error('Failed to load by-book data:', err);
+      console.error('Failed to build by-book data:', err);
     } finally {
       setByBookLoading(false);
     }
-  }, []);
+  }, [items]);
 
   const loadFavorites = useCallback(async () => {
     try {
@@ -92,9 +110,9 @@ export default function AudioLibrary() {
   }, []);
 
   useEffect(() => {
-    loadPlaybackHistory();
+    loadAllAudio();
     loadFavorites();
-  }, [loadPlaybackHistory, loadFavorites]);
+  }, [loadAllAudio, loadFavorites]);
 
   useEffect(() => {
     if (activeTab === 'by-book') {
@@ -108,11 +126,19 @@ export default function AudioLibrary() {
 
     setSelectedChapterId(chapterId);
 
-    let audioUrl = audioUrlCache.current.get(chapterId);
+    // Prefer the resolved audioUrl from items (fresh signed URL from /all-audio)
+    let audioUrl = chapter.audioUrl;
+
+    // Fall back to cache
+    if (!audioUrl) {
+      audioUrl = audioUrlCache.current.get(chapterId);
+    }
+
+    // Final fallback: fetch fresh URL via getChapterAudio
     if (!audioUrl) {
       try {
         const res = await getChapterAudio(chapterId);
-        audioUrl = res.audioUrl;
+        audioUrl = res?.audioUrl;
         if (audioUrl) {
           audioUrlCache.current.set(chapterId, audioUrl);
         }
@@ -249,7 +275,7 @@ export default function AudioLibrary() {
                   bookFilter={bookFilter}
                   loading={loading}
                   error={error}
-                  onRetry={loadPlaybackHistory}
+                  onRetry={loadAllAudio}
                   isFavorite={(id) => favorites.has(id)}
                   onFavoriteToggle={toggleFavorite}
                   selectedChapterId={selectedChapterId}

@@ -153,6 +153,20 @@ async function synthesizeChapterWorker(jobData) {
       })
       .eq('id', generationId);
 
+    // Sync chapter status so library queries can find it (non-blocking)
+    try {
+      const { error: chapterStatusErr } = await supabase
+        .from('chapters')
+        .update({ status: 'completed' })
+        .eq('id', chapterId)
+        .eq('user_id', userId);
+      if (chapterStatusErr) {
+        console.warn('[Worker] Failed to sync chapter status:', chapterStatusErr.message);
+      }
+    } catch (statusErr) {
+      console.warn('[Worker] Chapter status sync error:', statusErr.message);
+    }
+
     // Atomic completion increment (race-safe)
     if (bookId) {
       try {
