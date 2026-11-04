@@ -183,7 +183,7 @@ export default function Recent() {
   }, [downloadingBookId]);
 
   return (
-    <AppLayout activePath="/recent" onNavClick={navigate}>
+    <AppLayout activePath="/recent" onNavClick={navigate} hideSearch={true}>
       <div className="max-w-7xl mx-auto px-8 py-8">
         <h1 className="text-3xl font-semibold text-foreground mb-2">Recent Activity</h1>
         <p className="text-sm text-muted-foreground mb-6">Recently opened books.</p>

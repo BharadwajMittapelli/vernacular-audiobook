@@ -5,7 +5,7 @@ import { getSettingsStats } from '../../services/api.js';
 
 const COLLAPSE_KEY = 'ekithab-sidebar-collapsed';
 
-export function AppLayout({ children, activePath, onNavClick, contextualSidebar }) {
+export function AppLayout({ children, activePath, onNavClick, contextualSidebar, hideSearch = false }) {
   const [credits, setCredits] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
@@ -29,7 +29,7 @@ export function AppLayout({ children, activePath, onNavClick, contextualSidebar 
         </AppSidebar>
       </div>
       <div className="flex-1 flex flex-col overflow-hidden">
-        <AppTopBar onMenuClick={() => setMobileOpen(!mobileOpen)} />
+        <AppTopBar onMenuClick={() => setMobileOpen(!mobileOpen)} hideSearch={hideSearch} />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>

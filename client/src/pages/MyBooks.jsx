@@ -264,7 +264,7 @@ export default function MyBooks() {
   ];
 
   return (
-    <AppLayout activePath="/my-books" onNavClick={navigate}>
+    <AppLayout activePath="/my-books" onNavClick={navigate} hideSearch={true}>
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-semibold text-foreground">My Books</h1>
