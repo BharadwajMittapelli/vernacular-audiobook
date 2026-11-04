@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BookOpen, Mic, Library, Settings, LogOut, Coins, Clock, Home, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { getLastOpenedBook } from '../../services/api.js';
+import { LogoutConfirmDialog } from '../books/LogoutConfirmDialog.jsx';
 
 const NAV_ITEMS = [
   { label: 'Home', icon: Home, route: '/home' },
@@ -41,6 +42,12 @@ export function AppSidebar({ activePath, onNavClick, credits, children, collapse
       console.error('Failed to get last opened book:', e);
       onNavClick('/my-books');
     }
+  };
+
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+
+  const handleOpenLogoutDialog = () => {
+    setShowLogoutDialog(true);
   };
 
   return (
@@ -104,14 +111,20 @@ export function AppSidebar({ activePath, onNavClick, credits, children, collapse
               <p className="text-sm font-medium truncate">{fullName}</p>
             </div>
           )}
-          {!collapsed && <button onClick={handleLogout} disabled={loading}><LogOut className="h-4 w-4 text-muted-foreground" /></button>}
+          {!collapsed && <button onClick={handleOpenLogoutDialog} disabled={loading}><LogOut className="h-4 w-4 text-muted-foreground" /></button>}
         </div>
         {collapsed && (
-          <button onClick={handleLogout} disabled={loading} title="Log out" className="w-full flex justify-center py-1 rounded-lg hover:bg-muted transition-colors">
+          <button onClick={handleOpenLogoutDialog} disabled={loading} title="Log out" className="w-full flex justify-center py-1 rounded-lg hover:bg-muted transition-colors">
             <LogOut className="h-4 w-4 text-muted-foreground" />
           </button>
         )}
       </div>
+      <LogoutConfirmDialog
+        isOpen={showLogoutDialog}
+        onClose={() => setShowLogoutDialog(false)}
+        onConfirm={handleLogout}
+        loading={loading}
+      />
     </aside>
   );
 }
