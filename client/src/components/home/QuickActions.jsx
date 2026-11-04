@@ -18,7 +18,7 @@ const ACTIONS = [
     icon: Clock,
     title: 'Recent Activity',
     description: 'Continue where you left off',
-    route: '/home',
+    route: '/recent',
   },
   {
     icon: Settings,
