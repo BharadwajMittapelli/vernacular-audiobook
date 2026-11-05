@@ -1,16 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const bucketName = process.env.SUPABASE_BUCKET_NAME || 'audiobook';
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase environment variables');
+  console.error('[FATAL] Missing Supabase environment variables. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Railway dashboard.');
+  console.error('[FATAL] Server cannot start without Supabase credentials.');
+  process.exit(1);
 }
 
 export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -20,4 +17,4 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   },
 });
 
-export const AUDIO_BUCKET = process.env.SUPABASE_BUCKET_NAME || 'audiobook';
+export const AUDIO_BUCKET = bucketName;
