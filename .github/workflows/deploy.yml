@@ -38,13 +38,13 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Deploy to Production
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        run: npx vercel@latest --prod --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Deploy Preview
-        if: github.event_name == 'pull_request'
-        run: npx vercel@latest --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-args: --prod
+          working-directory: ./client
+          github-comment: false
 
   backend:
     name: Backend (Railway)
@@ -57,6 +57,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          npm install -g @railway/cli
-          railway link -p ffacae89-3371-4ff8-90a9-09e2ecc53672
-          railway up --service vernacular-audiobook --environment production --detach
+          curl -X POST "https://api.railway.com/rpc" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","method":"service.deploy","params":{"service_id":"e4384f28-df8d-47fc-928c-9d6acc6cb415"},"id":1}'
