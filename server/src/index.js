@@ -1,7 +1,13 @@
-import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.resolve(__dirname, '../../.env');
+console.log('[DEBUG] Loading .env from:', envPath);
+dotenv.config({ path: envPath });
+
+import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { authMiddleware } from './middleware/auth.js';
@@ -15,9 +21,6 @@ import chapterRoutes from './routes/chapterRoutes.js';
 import settingsRouter from './routes/settingsRoutes.js';
 import libraryRoutes from './routes/libraryRoutes.js';
 import { isCreditBypassed } from './services/creditService.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 if (isCreditBypassed()) {
   console.warn('[DEV_BYPASS_CREDITS ACTIVE] Credit enforcement is disabled for local testing. Never set this flag in production.');

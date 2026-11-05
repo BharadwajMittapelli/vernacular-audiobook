@@ -38,3 +38,5 @@ coverage/
 
 # Kilo local config (may contain secrets)
 .kilo/kilo.jsonc
+.vercel
+.env*

@@ -1,0 +1,22 @@
+# Railway deployment configuration
+# This file is read by Railway CLI during deployment
+
+use: web
+
+[build]
+builder = "RAILPACK"
+buildCommand = "npm install"
+
+[deploy]
+startCommand = "cd server && npm start"
+healthcheckPath = "/health"
+healthcheckTimeoutSecs = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+[service.web]
+# Root directory for monorepo deployment
+rootDirectory = "/"
+# Source repository
+source.repo = "BharadwajMittapelli/vernacular-audiobook"
+source.branch = "master"

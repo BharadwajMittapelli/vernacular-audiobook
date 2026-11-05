@@ -5,8 +5,8 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "dev": "nodemon src/index.js",
-    "start": "node src/index.js",
+    "dev": "nodemon src/bootstrap.js",
+    "start": "node src/bootstrap.js",
     "build": "echo 'no build step (plain ESM)'",
     "lint": "node --check src/index.js",
     "test": "node --test"
