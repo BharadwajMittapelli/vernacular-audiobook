@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import WebSocket from 'ws';
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,13 +10,16 @@ if (!supabaseUrl || !supabaseServiceKey) {
   process.exit(1);
 }
 
+// Disable realtime to avoid WebSocket requirement on Node 18
 export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
   },
   realtime: {
-    websocket: WebSocket,
+    config: {
+      postgresChanges: false,
+    },
   },
 });
 
