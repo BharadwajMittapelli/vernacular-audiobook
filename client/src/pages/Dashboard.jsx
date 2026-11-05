@@ -8,7 +8,7 @@ import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { StudioLayout } from '../components/layout/StudioLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
-import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport, logPlayback, normalizeChapter, getDownloads } from '../services/api.js';
+import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport, logPlayback, normalizeChapter, getDownloads, synthesizeAllMp3 } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
@@ -162,6 +162,7 @@ function Dashboard() {
   const pollIntervalRef = React.useRef(null);
   const [isSpatialEnabled, setIsSpatialEnabled] = React.useState(false);
   const hasLoggedPlaybackRef = React.useRef(false);
+  const [isFullBookAudio, setIsFullBookAudio] = React.useState(false);
 
   // Initialize from ?bookId query parameter on mount
   React.useEffect(() => {
@@ -476,7 +477,7 @@ function Dashboard() {
     if (config?.voiceProfile) setSelectedVoice(config.voiceProfile);
     if (config?.speed !== undefined) setSpeed(config.speed);
 
-    if (config?.submit && chapter) {
+    if (config?.submit && chapter && book) {
       setIsGenerating(true);
       setError(null);
 
@@ -504,6 +505,40 @@ function Dashboard() {
       } finally {
         setIsGenerating(false);
       }
+    }
+  };
+
+  // Full-book synthesis: compile all chapters into a single MP3
+  const handleGenerateAll = async () => {
+    if (!book || isGenerating) return;
+    console.log('[Dashboard] Starting full book synthesis for:', book.id);
+    setIsGenerating(true);
+    setError(null);
+    setBulkStatus('Generating full audiobook...');
+    setIsFullBookAudio(false);
+
+    try {
+      const blob = await synthesizeAllMp3(book.id, {
+        language: selectedLanguage,
+        voiceProfile: selectedVoice,
+        speed,
+      });
+      console.log('[Dashboard] Received audio blob:', blob.size, 'bytes');
+
+      // Store the blob URL in state so the play button appears
+      const url = URL.createObjectURL(blob);
+      setAudioResult({ audioUrl: url, alignment: [] });
+      setIsFullBookAudio(true);
+
+      setBulkStatus(`Generated ${book.chapters?.length || 0} chapters — click Export Package to download`);
+      setTimeout(() => setBulkStatus(null), 5000);
+    } catch (err) {
+      console.error('[Dashboard] Full book synthesis failed:', err);
+      const msg = err.message || err.error || 'Failed to generate full audiobook';
+      setError(msg);
+      setBulkStatus(null);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -597,39 +632,54 @@ function Dashboard() {
   };
 
   const handleExport = async () => {
-    if (!chapter || !audioUrl || isExporting) return;
     setIsExporting(true);
     setError(null);
-    const safe = (chapter.title || '').replace(/[\\/:*?"<>|]/g, '').trim() || 'Chapter';
     try {
-      downloadBlob(
-        new Blob([cleanOcrText(chapter.text)], { type: 'text/plain;charset=utf-8' }),
-        `${safe}.txt`
-      );
-      // Signed URLs expire after 1h — refresh before fetching; fall back to the held URL.
-      let url = audioUrl;
+      // Full-book audio export
+      if (isFullBookAudio && audioUrl) {
+        const res = await fetch(audioUrl);
+        if (!res.ok) throw new Error(`Audio fetch failed: ${res.status}`);
+        const blob = await res.blob();
+        const ext = blob.type === 'audio/mpeg' || blob.type === 'audio/mp3' ? 'mp3' : 'wav';
+        downloadBlob(blob, `${book?.title || 'audiobook'}.${ext}`, 2000);
+        setBulkStatus('Download started');
+        setTimeout(() => setBulkStatus(null), 3000);
+        setIsExporting(false);
+        return;
+      }
+
+      // Chapter-level export (existing logic)
+      if (!chapter || !audioUrl || isExporting) {
+        setIsExporting(false);
+        return;
+      }
+      const safe = (chapter.title || '').replace(/[\\/:*?"<>|]/g, '').trim() || 'Chapter';
       try {
-        url = (await getChapterAudio(chapter.chapterId)).audioUrl || audioUrl;
-      } catch {
-        /* use held audioUrl */
+        downloadBlob(
+          new Blob([cleanOcrText(chapter.text)], { type: 'text/plain;charset=utf-8' }),
+          `${safe}.txt`
+        );
+        let url = audioUrl;
+        try {
+          url = (await getChapterAudio(chapter.chapterId)).audioUrl || audioUrl;
+        } catch {
+          /* use held audioUrl */
+        }
+        if (!url) throw new Error('No audio URL available');
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Audio fetch failed with status: ${res.status}`);
+        const blob = await res.blob();
+        if (blob.type && !blob.type.startsWith('audio/')) {
+          throw new Error(`Unexpected audio content-type: ${blob.type}`);
+        }
+        const ext = blob.type === 'audio/mpeg' || blob.type === 'audio/mp3' ? 'mp3' : 'wav';
+        downloadBlob(blob, `${safe}.${ext}`, 2000);
+        setBulkStatus(`Exported ${safe}.${ext}`);
+        setTimeout(() => setBulkStatus(null), 3000);
+      } catch (err) {
+        console.error('[Dashboard] Export failed:', err);
+        setError(err.message || 'Export failed');
       }
-      if (!url) throw new Error('No audio URL available');
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Audio fetch failed with status: ${res.status}`);
-      const blob = await res.blob();
-      // Don't save error JSON/HTML served with 200 as an "audio" file
-      if (blob.type && !blob.type.startsWith('audio/')) {
-        throw new Error(`Unexpected audio content-type: ${blob.type}`);
-      }
-      // Strict extension: uploads always set audio/mpeg|audio/wav (storageService.js); default .wav
-      const ext = blob.type === 'audio/mpeg' || blob.type === 'audio/mp3' ? 'mp3' : 'wav';
-      // ponytail: 2000ms revoke delay so large binaries aren't cancelled mid-transfer
-      downloadBlob(blob, `${safe}.${ext}`, 2000);
-      // Downloads record is auto-saved at generation time (syncSavedChapters) —
-      // logging again here would duplicate the row.
-    } catch (err) {
-      console.error('Export failed:', err);
-      setError('Audio download failed — the link may have expired or CORS blocked it. Try again.');
     } finally {
       setIsExporting(false);
     }
@@ -901,21 +951,21 @@ function Dashboard() {
 
           {/* Fixed action buttons — always visible at bottom */}
           <div className="shrink-0 px-3 pb-3 flex flex-col gap-2">
-            {/* Generate Audio */}
+            {/* Generate Audio - Full Book Synthesis */}
             <button
-              onClick={() => isSpatialEnabled ? handleSpatialGenerate() : handleGenerate({ language: selectedLanguage, voiceProfile: selectedVoice, speed, submit: true })}
-              disabled={isGenerating || (!isSpatialEnabled && (!selectedVoice || !chapter))}
+              onClick={() => isSpatialEnabled ? handleSpatialGenerate() : handleGenerateAll()}
+              disabled={isGenerating || (!isSpatialEnabled && !book)}
               className="w-full bg-foreground text-background rounded-lg py-3 text-sm font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-opacity flex items-center justify-center gap-2"
             >
               {isGenerating ? (
                 <>
                   <span className="w-3 h-3 border-2 border-current/30 border-t-current rounded-full animate-spin" />
-                  Generating…
+                  Generating Full Audiobook…
                 </>
               ) : (
                 <>
                   <Zap className="h-4 w-4" />
-                  {isSpatialEnabled ? 'Generate Spatial' : chapter?.normalized === false ? 'Optimize & Generate Audio' : 'Generate Audio'}
+                  {isSpatialEnabled ? 'Generate Spatial' : book ? `Generate Full Audiobook (${book.chapters?.length || 0} chapters)` : 'Generate Audio'}
                 </>
               )}
             </button>
@@ -923,8 +973,8 @@ function Dashboard() {
             {/* Export Package */}
             <button
               onClick={handleExport}
-              disabled={!audioUrl || isExporting}
-              title="Downloads transcript and audio for this chapter"
+              disabled={(!audioUrl && !isFullBookAudio) || isExporting}
+              title={isFullBookAudio ? 'Download full audiobook MP3' : 'Downloads transcript and audio for this chapter'}
               className="w-full border border-border rounded-lg py-3 text-sm font-semibold hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors flex items-center justify-center gap-2"
             >
               {isExporting ? (
@@ -935,7 +985,7 @@ function Dashboard() {
               ) : (
                 <>
                   <Download className="h-4 w-4" />
-                  Export Package
+                  {isFullBookAudio ? 'Download MP3' : 'Export Package'}
                 </>
               )}
             </button>

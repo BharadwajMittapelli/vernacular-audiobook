@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabaseClient';
+import { fetchWithRetry, RequestQueue, RateLimitError } from '../utils/rateLimitRetry.js';
 
 if (!crypto.randomUUID) {
   crypto.randomUUID = () => {
@@ -13,6 +14,9 @@ if (!crypto.randomUUID) {
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4001',
 });
+
+// Request queue for synthesis operations to prevent rate limiting
+const synthesisQueue = new RequestQueue(1);
 
 // Shared in-flight refresh promise to prevent concurrent refreshes
 let refreshPromise = null;
@@ -78,11 +82,23 @@ export function getVoices(language) {
 }
 
 export function synthesizeAudio(payload) {
-  return api
-    .post('/api/audio/synthesize', payload, {
-      headers: { 'Idempotency-Key': crypto.randomUUID() },
+  // Queue synthesis requests to prevent rate limiting
+  return synthesisQueue.add(() =>
+    fetchWithRetry(`${api.defaults.baseURL}/api/audio/synthesize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': crypto.randomUUID(),
+      },
+      body: JSON.stringify(payload),
     })
-    .then((res) => res.data);
+      .then((res) => {
+        if (!res.ok && res.status === 429) {
+          throw new RateLimitError(res.headers.get('retry-after'));
+        }
+        return res.json();
+      })
+  );
 }
 
 export function synthesizeAsync({ chapters, ...rest }) {
@@ -110,7 +126,18 @@ export function updateChapter(chapterId, payload) {
 }
 
 export function normalizeChapter(chapterId) {
-  return api.post(`/api/chapters/${chapterId}/normalize`).then((res) => res.data);
+  return synthesisQueue.add(() =>
+    fetchWithRetry(`${api.defaults.baseURL}/api/chapters/${chapterId}/normalize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then((res) => {
+        if (!res.ok && res.status === 429) {
+          throw new RateLimitError(res.headers.get('retry-after'));
+        }
+        return res.json();
+      })
+  );
 }
 
 export function uploadDocument(file, language) {
@@ -137,6 +164,38 @@ export function spatialPreview({ chapterText, bookId }) {
   return api
     .post('/api/studio/spatial-preview', { chapterText, bookId }, { responseType: 'blob' })
     .then((res) => res.data);
+}
+
+/**
+ * Synthesize all chapters for a book and return a single merged MP3 file.
+ * This is the "Generate Audio" button behavior for full-book synthesis.
+ */
+export function synthesizeAllMp3(bookId, options = {}) {
+  const { language = 'hi-IN', voiceProfile, speed = 1.0 } = options;
+
+  // Must include auth header like other API calls
+  return synthesisQueue.add(async () => {
+    const session = await getValidSession();
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': session?.access_token ? `Bearer ${session.access_token}` : '',
+      'Idempotency-Key': crypto.randomUUID(),
+    };
+
+    const res = await fetchWithRetry(`${api.defaults.baseURL}/api/studio/${bookId}/synthesize-all-mp3`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ language, voiceProfile, speed }),
+      credentials: 'include',
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+
+    return res.blob();
+  });
 }
 
 export function getBooks() {

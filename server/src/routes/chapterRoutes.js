@@ -8,13 +8,22 @@ const router = express.Router();
 
 // Groq-spending endpoint; user-paced JIT calls get a modest per-IP bucket.
 const normalizeLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
-  message: { success: false, error: 'Too many optimization requests, max 10 per minute' },
-});
+   windowMs: 60 * 1000,
+   max: 10,
+   standardHeaders: 'draft-6',
+   legacyHeaders: false,
+   keyGenerator: (req) => req.ip,
+   message: { success: false, error: 'Too many optimization requests, max 10 per minute' },
+   handler: (req, res, _next, options) => {
+     const retryAfter = Math.ceil((options.windowMs - (Date.now() % options.windowMs)) / 1000);
+     res.status(429).json({
+       success: false,
+       error: options.message.error,
+       retryAfter,
+       retryAfterMs: retryAfter * 1000,
+     });
+   },
+ });
 
 // POST /:chapterId/normalize — JIT Groq normalization of one chapter (raw_text -> text_content)
 router.post('/:chapterId/normalize', normalizeLimiter, async (req, res) => {

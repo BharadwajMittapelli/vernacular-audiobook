@@ -21,21 +21,39 @@ const router = express.Router();
 
 // Credit-spending endpoints keep the documented tight buckets (global limiter is 60/min).
 const chapterTtsLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
-  message: { success: false, error: 'Too many synthesis requests, max 5 per minute' },
-});
-const bulkLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 2,
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => req.ip,
-  message: { success: false, error: 'Too many bulk requests, please try again later' },
-});
+   windowMs: 60 * 1000,
+   max: 5,
+   standardHeaders: 'draft-6',
+   legacyHeaders: false,
+   keyGenerator: (req) => req.ip,
+   message: { success: false, error: 'Too many synthesis requests, max 5 per minute' },
+   handler: (req, res, _next, options) => {
+     const retryAfter = Math.ceil((options.windowMs - (Date.now() % options.windowMs)) / 1000);
+     res.status(429).json({
+       success: false,
+       error: options.message.error,
+       retryAfter,
+       retryAfterMs: retryAfter * 1000,
+     });
+   },
+ });
+ const bulkLimiter = rateLimit({
+   windowMs: 60 * 1000,
+   max: 2,
+   standardHeaders: 'draft-6',
+   legacyHeaders: false,
+   keyGenerator: (req) => req.ip,
+   message: { success: false, error: 'Too many bulk requests, please try again later' },
+   handler: (req, res, _next, options) => {
+     const retryAfter = Math.ceil((options.windowMs - (Date.now() % options.windowMs)) / 1000);
+     res.status(429).json({
+       success: false,
+       error: options.message.error,
+       retryAfter,
+       retryAfterMs: retryAfter * 1000,
+     });
+   },
+ });
 
 // GET / — list books for the authenticated user
 router.get('/', async (req, res) => {
@@ -997,6 +1015,188 @@ router.post('/chapters/:chapterId/synthesize', chapterTtsLimiter, async (req, re
       success: false,
       error: error.message || 'Audio synthesis failed',
     });
+  }
+});
+
+// POST /:bookId/synthesize-all-mp3 — synthesize all chapters and return a single merged MP3
+router.post('/:bookId/synthesize-all-mp3', async (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const userId = req.user.id;
+
+    // Verify book exists and belongs to user
+    const { data: book, error: bookError } = await supabase
+      .from('books')
+      .select('id, title, total_chapters')
+      .eq('id', bookId)
+      .eq('user_id', userId)
+      .single();
+
+    if (bookError || !book) {
+      return res.status(404).json({ success: false, error: 'Book not found' });
+    }
+
+    // Get all chapters for this book
+    const { data: chapters, error: chaptersError } = await supabase
+      .from('chapters')
+      .select('id, title, text_content, sequence_number')
+      .eq('book_id', bookId)
+      .order('sequence_number', { ascending: true });
+
+    if (chaptersError) throw chaptersError;
+    if (!chapters || chapters.length === 0) {
+      return res.status(400).json({ success: false, error: 'No chapters found' });
+    }
+
+    // Filter to chapters with content
+    const chaptersWithText = chapters.filter(c => c.text_content && c.text_content.trim().length > 0);
+    if (chaptersWithText.length === 0) {
+      return res.status(400).json({ success: false, error: 'No chapters with text content found' });
+    }
+
+    // Get language from request or use default
+    const language = req.body?.language || 'hi-IN';
+    const voiceProfile = req.body?.voiceProfile;
+    const speed = req.body?.speed || 1.0;
+
+    // Calculate total credits needed
+    let totalCreditsNeeded = 0;
+    for (const ch of chaptersWithText) {
+      totalCreditsNeeded += Math.ceil((ch.text_content?.length || 0) / 100);
+    }
+
+    // Check credits
+    if (!isCreditBypassed()) {
+      const { data: userCredits } = await supabase
+        .from('credits')
+        .select('available_credits')
+        .eq('user_id', userId)
+        .single();
+
+      if (!userCredits || userCredits.available_credits < totalCreditsNeeded) {
+        return res.status(402).json({
+          success: false,
+          error: 'Insufficient credits',
+          required: totalCreditsNeeded,
+          available: userCredits?.available_credits || 0,
+        });
+      }
+    }
+
+    // Deduct credits upfront
+    if (!isCreditBypassed()) {
+      const { error: deductError } = await supabase.rpc('deduct_credits', {
+        p_user_id: userId,
+        p_amount: totalCreditsNeeded,
+        p_description: `Full book synthesis: ${book.title}`,
+      });
+      if (deductError) {
+        console.error('[SynthesizeAll] Credit deduction failed:', deductError);
+        return res.status(500).json({ success: false, error: 'Credit deduction failed' });
+      }
+    }
+
+    // Synthesize each chapter and collect audio buffers
+    const audioBuffers = [];
+    const chunkTimestamps = [];
+    const chunkDurations = [];
+    const byteRate = 32000; // 16kHz mono 16-bit
+    const CHAPTER_PAUSE_MS = 500; // 500ms pause between chapters
+
+    for (let i = 0; i < chaptersWithText.length; i++) {
+      const ch = chaptersWithText[i];
+      console.log(`[SynthesizeAll] Synthesizing chapter ${i + 1}/${chaptersWithText.length}: ${ch.title}`);
+
+      const cleanText = stripMarkdown(ch.text_content);
+      try {
+        const result = await synthesizeText(cleanText, language, voiceProfile, speed);
+        auditAudio(result.audioBuffer, cleanText, result.totalDuration);
+        audioBuffers.push(result.audioBuffer);
+        chunkTimestamps.push(result.alignment.map(a => ({ start: a.start, end: a.end, word: a.word })));
+        chunkDurations.push(result.totalDuration);
+      } catch (err) {
+        console.error(`[SynthesizeAll] Chapter ${ch.title} synthesis failed:`, err.message);
+        // Refund credits for failed chapter
+        if (!isCreditBypassed()) {
+          try {
+            await refundCredits(userId, (ch.text_content?.length || 0), `refund-${ch.id}`);
+          } catch {}
+        }
+        throw new Error(`Chapter "${ch.title}" synthesis failed: ${err.message}`);
+      }
+
+      // Add silence buffer between chapters (except after last)
+      if (i < chaptersWithText.length - 1) {
+        audioBuffers.push(buildSilenceBuffer(CHAPTER_PAUSE_MS, byteRate));
+        chunkTimestamps.push([]);
+        chunkDurations.push(CHAPTER_PAUSE_MS / 1000);
+      }
+    }
+
+    // Stitch all buffers into single WAV
+    const { stitch } = await import('../services/audioStitcher.js');
+    const { mergedBuffer, cumulativeTimestamps, totalDuration } = stitch(
+      audioBuffers,
+      chunkTimestamps,
+      chunkDurations
+    );
+
+    // Convert WAV to MP3 using ffmpeg
+    const ffmpeg = (await import('fluent-ffmpeg')).default;
+    const ffmpegPath = (await import('ffmpeg-static')).default;
+    ffmpeg.setFfmpegPath(ffmpegPath);
+    ffmpeg.setFfprobePath(ffmpegPath);
+
+    // Create temp file for ffmpeg input
+    const tempWavPath = resolve(tmpdir(), `synthesis-all-${uuidv4()}.wav`);
+    await writeFile(tempWavPath, mergedBuffer);
+
+    // Set response headers
+    const safeFilename = (book.title || 'audiobook')
+      .replace(/[\\/:*?"<>|]/g, '')
+      .trim() || 'audiobook';
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.mp3"`);
+    res.setHeader('Cache-Control', 'no-store');
+
+    const ffmpegProcess = ffmpeg();
+    ffmpegProcess
+      .input(tempWavPath)
+      .on('error', (err) => {
+        console.error('[SynthesizeAll] ffmpeg error:', err.message);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, error: 'Failed to convert to MP3' });
+        }
+      })
+      .on('end', async () => {
+        try {
+          await unlink(tempWavPath);
+        } catch {}
+        console.log(`[SynthesizeAll] Done: ${safeFilename}.mp3 (${totalDuration.toFixed(1)}s)`);
+      });
+
+    req.on('close', () => {
+      if (!res.headersSent) {
+        ffmpegProcess.kill('SIGTERM');
+      }
+      // Clean up temp file on client disconnect
+      unlink(tempWavPath).catch(() => {});
+    });
+
+    ffmpegProcess
+      .outputFormat('mp3')
+      .audioBitrate(128)
+      .pipe(res, { end: true });
+
+  } catch (error) {
+    console.error('POST /studio/:bookId/synthesize-all-mp3 error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Full book synthesis failed',
+      });
+    }
   }
 });
 

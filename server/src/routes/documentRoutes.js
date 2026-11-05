@@ -36,13 +36,13 @@ const uploadSingle = (req, res, next) =>
 
 function buildPdfBaseUrl() {
   // pdf-parse v2.4.5 depends on pdfjs-dist@5.4.296 (Mozilla's pdf.js).
-  // The cmaps/ and standard_fonts/ dirs live in pdfjs-dist/legacy/build/,
-  // NOT inside pdf-parse's own dist/. We resolve pdfjs-dist directly; if npm
+  // The cmaps/ and standard_fonts/ dirs live at the ROOT of pdfjs-dist/,
+  // NOT inside legacy/build/. We resolve pdfjs-dist directly; if npm
   // didn't hoist it (e.g. old npm <7 or nested workspaces), fall back to
   // looking inside pdf-parse/node_modules/.
   // IMPORTANT: on Windows, pathToFileURL does NOT add a trailing slash for
   // directories, so we must ensure the base URL ends with '/' before joining
-  // 'legacy/build/', otherwise new URL() resolves relative to the parent dir.
+  // 'cmaps/' or 'standard_fonts/', otherwise new URL() resolves relative to the parent dir.
   const require = createRequire(import.meta.url);
   let pkgJson;
   try {
@@ -53,7 +53,7 @@ function buildPdfBaseUrl() {
   }
   const pkgRoot = path.dirname(pkgJson);
   const baseUrl = pathToFileURL(pkgRoot).href + (pathToFileURL(pkgRoot).href.endsWith('/') ? '' : '/');
-  return new URL('legacy/build/', baseUrl);
+  return new URL('.', baseUrl); // Return root of pdfjs-dist package where cmaps/ and standard_fonts/ exist
 }
 
 async function pdfText(buffer) {
@@ -70,9 +70,42 @@ async function pdfText(buffer) {
   console.log('[pdfText] PDFParse constructed');
   
   try {
-    const result = await parser.getText();
-    console.log('[pdfText] getText() resolved, text.length=', result.text?.length);
-    return result.text;
+    const doc = await parser.load();
+    const allText = [];
+    const emptyPages = [];
+    
+    for (let i = 1; i <= doc.numPages; i++) {
+      try {
+        const page = await doc.getPage(i);
+        const text = await parser.getPageText(page, { pageJoiner: '' }, doc.numPages);
+        allText.push(text);
+        if (!text || text.trim().length === 0) {
+          emptyPages.push(i);
+        }
+        page.cleanup();
+      } catch (pageErr) {
+        console.error(`[pdfText] Page ${i} extraction failed:`, pageErr.message);
+        allText.push(`[PAGE ${i} EXTRACTION FAILED]`);
+        emptyPages.push(i);
+      }
+    }
+    
+    const resultText = allText.join('\n\n');
+    console.log('[pdfText] getText() resolved, text.length=', resultText?.length);
+    console.log('[pdfText] DIAGNOSTIC:');
+    console.log('  result.total (pages in PDF):', doc.numPages);
+    console.log('  pages successfully parsed:', allText.length);
+    console.log('  Per-page text lengths:', allText.map((t, i) => ({
+      pageNum: i + 1,
+      textLen: t?.length || 0,
+      preview: t?.slice(0, 100)
+    })));
+    
+    if (emptyPages.length > 0) {
+      console.warn('[pdfText] Pages with no text layer (likely scanned):', emptyPages);
+    }
+    
+    return resultText;
   } catch (e) {
     console.error('[pdfText] getText() threw:', e.stack || e);
     throw new Error(`PDF parse error: ${e.message}`);

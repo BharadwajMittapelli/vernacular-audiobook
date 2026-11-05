@@ -57,24 +57,34 @@ app.use(cors(corsDelegate));
 app.use(express.json({ limit: '50mb' }));
 
 const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 60,
-  message: {
-    success: false,
-    error: 'Too many requests, please slow down',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Use X-Forwarded-For header when behind proxy
-  keyGenerator: (req) => req.ip,
-  // Storefront embed and /api/voices have their own limiters; spend endpoints
-  // get tight per-route buckets. Health probe must not burn budget.
-  skip: (req) =>
-    req.path.startsWith('/api/storefront') ||
-    req.path.startsWith('/api/audio/synthesize-async') ||
-    req.path.startsWith('/api/voices') ||
-    req.path === '/health',
-});
+   windowMs: 60 * 1000,
+   max: 60,
+   message: {
+     success: false,
+     error: 'Too many requests, please slow down',
+   },
+   standardHeaders: 'draft-6', // Send Retry-After header
+   legacyHeaders: false,
+   // Use X-Forwarded-For header when behind proxy
+   keyGenerator: (req) => req.ip,
+   // Storefront embed and /api/voices have their own limiters; spend endpoints
+   // get tight per-route buckets. Health probe must not burn budget.
+   skip: (req) =>
+     req.path.startsWith('/api/storefront') ||
+     req.path.startsWith('/api/audio/synthesize-async') ||
+     req.path.startsWith('/api/voices') ||
+     req.path === '/health',
+   handler: (req, res, _next, options) => {
+     // Calculate when the window resets for better UX
+     const retryAfter = Math.ceil((options.windowMs - (Date.now() % options.windowMs)) / 1000);
+     res.status(429).json({
+       success: false,
+       error: options.message.error,
+       retryAfter,
+       retryAfterMs: retryAfter * 1000,
+     });
+   },
+ });
 
 app.use(apiLimiter);
 
