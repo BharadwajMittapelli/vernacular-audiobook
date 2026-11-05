@@ -40,19 +40,11 @@ jobs:
 
       - name: Deploy to Production
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-args: --prod
-          working-directory: ./client
+        run: npx vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy Preview
         if: github.event_name == 'pull_request'
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-args: --token
-          working-directory: ./client
+        run: npx vercel --token=${{ secrets.VERCEL_TOKEN }}
 
   backend:
     name: Backend (Railway)
@@ -64,5 +56,6 @@ jobs:
       - name: Deploy to Railway
         run: |
           npm install -g @railway/cli
+          echo "${{ secrets.RAILWAY_TOKEN }}" | railway login --ci
           railway link -p ffacae89-3371-4ff8-90a9-09e2ecc53672
           railway up --service vernacular-audiobook --environment production --detach
