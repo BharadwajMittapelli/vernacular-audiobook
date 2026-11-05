@@ -5,22 +5,11 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const bucketName = process.env.SUPABASE_BUCKET_NAME || 'audiobook';
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('[FATAL] Missing Supabase environment variables. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Railway dashboard.');
-  console.error('[FATAL] Server cannot start without Supabase credentials.');
+  console.error('[FATAL] Missing Supabase environment variables.');
   process.exit(1);
 }
 
-// Disable realtime to avoid WebSocket requirement on Node 18
-export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-  realtime: {
-    config: {
-      postgresChanges: false,
-    },
-  },
-});
+// Simple client without realtime to avoid WebSocket issues on Node 18
+export const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export const AUDIO_BUCKET = bucketName;
