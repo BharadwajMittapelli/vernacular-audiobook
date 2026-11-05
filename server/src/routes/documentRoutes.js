@@ -4,7 +4,6 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import AdmZip from 'adm-zip';
-import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { splitTextIntoChapters } from '../utils/chapterSplitter.js';
 import { VALID_LANGUAGES } from '../config/gnaniVoices.js';
@@ -60,6 +59,9 @@ async function pdfText(buffer) {
   console.log('[pdfText] START buffer.length=', buffer.length);
   const cMapsBase = buildPdfBaseUrl();
   console.log('[pdfText] cMapsBase=', cMapsBase.href);
+  
+  // Lazy-load PDFParse to avoid loading pdfjs-dist at server startup (crashes on Node 18 due to missing DOMMatrix)
+  const { PDFParse } = await import('pdf-parse');
   
   const parser = new PDFParse({
     data: new Uint8Array(buffer),
