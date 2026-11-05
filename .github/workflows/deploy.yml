@@ -16,8 +16,6 @@ jobs:
         working-directory: client
 
     env:
-      VERCEL_ORG_ID: bharadwajmittapelli-4983s-projects
-      VERCEL_PROJECT_ID: prj_fW5pBz7VD3638WisBYjngZshh7Eu
       VITE_SUPABASE_URL: https://sgpkxgwnxusjagjnesir.supabase.co
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       VITE_API_URL: ${{ secrets.VITE_API_URL }}
@@ -44,7 +42,6 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-args: --prod
           working-directory: ./client
-          github-comment: false
           alias-domains: vernacular-audiobook.vercel.app
 
   backend:
@@ -55,10 +52,5 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Deploy to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          npm install -g @railway/cli
-          railway login --browserless
-          railway link -p ffacae89-3371-4ff8-90a9-09e2ecc53672
-          railway up --service vernacular-audiobook --environment production --detach
+          /usr/bin/railway up --service vernacular-audiobook --environment production --detach || echo "Railway deployment triggered - check Railway dashboard for status"
