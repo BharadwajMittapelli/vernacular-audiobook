@@ -29,7 +29,8 @@
     "multer": "^2.4.0",
     "music-metadata": "^12.2.1",
     "pdf-parse": "^2.4.5",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
     "nodemon": "^1.14.10"
