@@ -45,6 +45,7 @@ jobs:
           vercel-args: --prod
           working-directory: ./client
           github-comment: false
+          alias-domains: vernacular-audiobook.vercel.app
 
   backend:
     name: Backend (Railway)
@@ -57,7 +58,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          curl -X POST "https://api.railway.com/rpc" \
-            -H "Authorization: Bearer $RAILWAY_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d '{"jsonrpc":"2.0","method":"service.deploy","params":{"service_id":"e4384f28-df8d-47fc-928c-9d6acc6cb415"},"id":1}'
+          npm install -g @railway/cli
+          railway login --browserless
+          railway link -p ffacae89-3371-4ff8-90a9-09e2ecc53672
+          railway up --service vernacular-audiobook --environment production --detach
