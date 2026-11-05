@@ -1,0 +1,70 @@
+name: Deploy Full Stack
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    name: Frontend (Vercel)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+
+    env:
+      VERCEL_ORG_ID: bharadwajmittapelli-4983s-projects
+      VERCEL_PROJECT_ID: prj_fW5pBz7VD3638WisBYjngZshh7Eu
+      VITE_SUPABASE_URL: https://sgpkxgwnxusjagjnesir.supabase.co
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to Vercel
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel_token: ${{ secrets.VERCEL_TOKEN }}
+          vercel_args: --prod
+          working_directory: ./client
+
+      - name: Deploy Preview
+        if: github.event_name == 'pull_request'
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel_token: ${{ secrets.VERCEL_TOKEN }}
+          vercel_args: --token
+          working_directory: ./client
+
+  backend:
+    name: Backend (Railway)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Railway
+        uses: railwayapp/deploy@v3
+        with:
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
+          project: ${{ secrets.RAILWAY_PROJECT_ID }}
+          service: vernacular-audiobook
+          env: production
