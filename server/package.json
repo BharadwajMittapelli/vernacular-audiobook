@@ -12,7 +12,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
+    "@supabase/supabase-js": "^2.45.4",
     "@vitalets/google-translate-api": "^9.2.1",
     "adm-zip": "^0.6.1",
     "axios": "^1.6.2",
@@ -30,7 +30,7 @@
     "music-metadata": "^12.2.1",
     "pdf-parse": "^2.4.5",
     "uuid": "^9.0.1",
-    "ws": "^8.22.1"
+    "ws": "8.22.1"
   },
   "devDependencies": {
     "nodemon": "^1.14.10"
