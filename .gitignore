@@ -8,10 +8,16 @@ dist/
 build/
 *.local
 
-# Environment files
+# Environment files (secret values only - don't commit)
 .env
 .env.local
+.env.production
+.env.development
 .env.*.local
+
+# Environment templates (safe to commit)
+!.env.example
+!client/.env.example
 
 # IDE
 .vscode/
@@ -39,4 +45,7 @@ coverage/
 # Kilo local config (may contain secrets)
 .kilo/kilo.jsonc
 .vercel
+
+# Supabase CLI local state
+supabase/.temp/
 .env*

@@ -16,7 +16,7 @@ jobs:
         working-directory: client
 
     env:
-      VITE_SUPABASE_URL: https://sgpkxgwnxusjagjnesir.supabase.co
+      VITE_SUPABASE_URL: https://znhhavbeqxoydojywttu.supabase.co
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
