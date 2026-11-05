@@ -658,7 +658,7 @@ router.get('/:bookId/export-mp3', exportLimiter, async (req, res) => {
         console.log(`[MP3 Export] Done: ${safeFilename}.mp3`);
       })
       .outputFormat('mp3')
-      .saveToStream(res, { end: true });
+      .pipe(res, { end: true });
   } catch (error) {
     console.error('GET /studio/:bookId/export-mp3 error:', error);
     if (!res.headersSent) {
