@@ -1,6 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Download, MoreVertical, Trash2, AlertCircle, Loader2 } from 'lucide-react';
-import { getDownloads, deleteDownload, exportBookMp3 } from '../../services/api.js';
+import { getDownloads, deleteDownload, exportBookMp3, getChapterAudio } from '../../services/api.js';
+
+function saveBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
 
 function formatFileSize(bytes) {
   if (!bytes) return null;
@@ -52,10 +63,10 @@ function PackageRow({
   onRemove,
   removingId,
 }) {
-  const initials = getInitials(item.book_title);
-  const fileSize = formatFileSize(item.file_size_bytes);
-  const relDate = formatRelativeExportDate(item.exported_at);
-  const absDate = formatExportDate(item.exported_at);
+  const initials = getInitials(item.bookTitle);
+  const fileSize = formatFileSize(item.fileSize);
+  const relDate = formatRelativeExportDate(item.exportedAt);
+  const absDate = formatExportDate(item.exportedAt);
   const isRemoving = removingId === item.id;
 
   return (
@@ -71,10 +82,10 @@ function PackageRow({
     >
       {/* Cover thumbnail */}
       <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted shrink-0 flex items-center justify-center">
-        {item.book_cover_url ? (
+        {item.bookCoverUrl ? (
           <img
-            src={item.book_cover_url}
-            alt={item.book_title}
+            src={item.bookCoverUrl}
+            alt={item.bookTitle}
             className="w-full h-full object-cover"
             loading="lazy"
           />
@@ -85,13 +96,13 @@ function PackageRow({
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <h4 className="font-semibold text-foreground truncate">{item.book_title}</h4>
+        <h4 className="font-semibold text-foreground truncate">{item.bookTitle}</h4>
         <p className="text-xs text-muted-foreground mt-0.5">
         {item.exportType === 'chapter' ? 'Chapter Export' : 'Complete Audiobook Package'}
       </p>
         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
           <span className="text-[11px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium uppercase">
-            {item.file_format || 'MP3'}
+            {item.fileFormat || 'MP3'}
           </span>
           {fileSize && (
             <span className="text-xs text-muted-foreground">{fileSize}</span>
@@ -220,18 +231,18 @@ function DetailPanel({ item, onOpen, onRemove, removingId }) {
     );
   }
 
-  const initials = getInitials(item.book_title);
-  const fileSize = formatFileSize(item.file_size_bytes);
-  const absDate = formatExportDate(item.exported_at);
+  const initials = getInitials(item.bookTitle);
+  const fileSize = formatFileSize(item.fileSize);
+  const absDate = formatExportDate(item.exportedAt);
 
   return (
     <div className="flex flex-col h-full">
       {/* Cover */}
       <div className="w-full aspect-square rounded-xl overflow-hidden bg-muted mb-4 flex items-center justify-center">
-        {item.book_cover_url ? (
+        {item.bookCoverUrl ? (
           <img
-            src={item.book_cover_url}
-            alt={item.book_title}
+            src={item.bookCoverUrl}
+            alt={item.bookTitle}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -241,14 +252,14 @@ function DetailPanel({ item, onOpen, onRemove, removingId }) {
 
       {/* Info */}
       <div className="flex-1">
-        <h3 className="font-semibold text-foreground text-base truncate">{item.book_title}</h3>
+        <h3 className="font-semibold text-foreground text-base truncate">{item.bookTitle}</h3>
         <p className="text-xs text-muted-foreground mt-1">
         {item.exportType === 'chapter' ? 'Chapter Export' : 'Complete Audiobook Package'}
       </p>
         <div className="mt-3 space-y-1.5">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="px-1.5 py-0.5 rounded bg-muted font-medium uppercase">
-              {item.file_format || 'MP3'}
+              {item.fileFormat || 'MP3'}
             </span>
             {fileSize && <span>{fileSize}</span>}
             {item.totalChapters !== null && item.totalChapters !== undefined && (
@@ -257,7 +268,7 @@ function DetailPanel({ item, onOpen, onRemove, removingId }) {
           </div>
           <p className="text-xs text-muted-foreground">{absDate}</p>
           <p className="text-xs text-muted-foreground truncate">
-            {item.file_name}
+            {item.fileName}
           </p>
         </div>
       </div>
@@ -287,7 +298,7 @@ function DetailPanel({ item, onOpen, onRemove, removingId }) {
   );
 }
 
-export function DownloadsView({ onDownloadAgain }) {
+export function DownloadsView() {
   const [downloads, setDownloads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -318,19 +329,30 @@ export function DownloadsView({ onDownloadAgain }) {
 
   const sortedDownloads = [...downloads].sort((a, b) => {
     return sortOrder === 'newest'
-      ? new Date(b.exported_at) - new Date(a.exported_at)
-      : new Date(a.exported_at) - new Date(b.exported_at);
+      ? new Date(b.exportedAt) - new Date(a.exportedAt)
+      : new Date(a.exportedAt) - new Date(b.exportedAt);
   });
 
   const selectedDownload = downloads.find((d) => d.id === selectedId);
 
   const handleOpen = useCallback(async (item) => {
     try {
-      await onDownloadAgain(item.book_id);
+      if (item.exportType === 'chapter' && item.bookChapterId) {
+        const { audioUrl } = await getChapterAudio(item.bookChapterId);
+        if (!audioUrl) throw new Error('No audio URL for this chapter');
+        const res = await fetch(audioUrl);
+        if (!res.ok) throw new Error(`Audio fetch failed with status: ${res.status}`);
+        saveBlob(await res.blob(), item.fileName || `${item.bookTitle || 'chapter'}.mp3`);
+      } else {
+        const res = await exportBookMp3(item.bookId);
+        const cd = res.headers['content-disposition'] || '';
+        const match = cd.match(/filename\*?=['"]?(?:UTF-8'')?([^"';\s]+)['"]?/);
+        saveBlob(res.data, match ? decodeURIComponent(match[1]) : `${item.bookTitle || 'audiobook'}.mp3`);
+      }
     } catch (err) {
-      console.error('[DownloadsView] Open failed:', err);
+      console.error('[DownloadsView] Download failed:', err);
     }
-  }, [onDownloadAgain]);
+  }, []);
 
   const handleRemove = useCallback(async (id) => {
     setRemovingId(id);

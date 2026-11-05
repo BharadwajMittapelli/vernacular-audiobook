@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from '../context/NavigateContext.jsx';
-import { getAllLibraryAudio, getFavorites, addFavorite, removeFavorite, getDownloads, exportBookMp3, getChapterAudio } from '../services/api.js';
+import { getAllLibraryAudio, getFavorites, addFavorite, removeFavorite, getChapterAudio } from '../services/api.js';
 import { AppLayout } from '../components/layout/AppLayout.jsx';
 import { DownloadsView } from '../components/audioLibrary/DownloadsView.jsx';
 import { ByBookView } from '../components/audioLibrary/ByBookView.jsx';
@@ -190,9 +190,33 @@ export default function AudioLibrary() {
     setPlaybackRate(next);
   }, [playbackRate, setPlaybackRate]);
 
-  const handleDownload = useCallback(() => {
+  const saveBlob = (blob, name) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  // Individual per-chapter download of the saved file
+  const handleDownload = useCallback(async () => {
     const chapter = items.find((i) => i.chapterId === selectedChapterId);
-    if (chapter) exportBookMp3(chapter.bookId);
+    if (!chapter) return;
+    try {
+      const { audioUrl } = await getChapterAudio(chapter.chapterId);
+      if (!audioUrl) return;
+      const res = await fetch(audioUrl);
+      if (!res.ok) throw new Error(`Audio fetch failed with status: ${res.status}`);
+      const blob = await res.blob();
+      const ext = blob.type.includes('mpeg') || blob.type.includes('mp3') ? 'mp3' : 'wav';
+      const safe = (chapter.chapterTitle || 'Chapter').replace(/[\\/:*?"<>|]/g, '').trim() || 'Chapter';
+      saveBlob(blob, `${safe}.${ext}`);
+    } catch (err) {
+      console.error('[AudioLibrary] Download failed:', err);
+    }
   }, [selectedChapterId, items]);
 
   const handleOpenStudio = useCallback(() => {
@@ -328,7 +352,7 @@ export default function AudioLibrary() {
                 selectedChapterId={selectedChapterId}
               />
             ) : activeTab === 'downloads' ? (
-              <DownloadsView onDownloadAgain={exportBookMp3} />
+              <DownloadsView />
             ) : (
               <div className="py-20 text-center text-muted-foreground">Coming soon...</div>
             )}

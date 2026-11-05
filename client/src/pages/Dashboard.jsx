@@ -8,7 +8,7 @@ import { AudioConfigModal } from '../components/studio/AudioConfigModal.jsx';
 import { BottomPlayer } from '../components/layout/BottomPlayer.jsx';
 import { StudioLayout } from '../components/layout/StudioLayout.jsx';
 import { CreditEstimateBadge } from '../components/studio/CreditEstimateBadge.jsx';
-import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport, logPlayback, normalizeChapter } from '../services/api.js';
+import { synthesizeAudio, synthesizeAsync, getChapterAudio, getChapterDetails, getBookDetails, getBookStatus, spatialPreview, logExport, logPlayback, normalizeChapter, getDownloads } from '../services/api.js';
 import { useNavigate } from '../context/NavigateContext.jsx';
 import { TranscriptEditor } from '../components/studio/TranscriptEditor.jsx';
 import { useAudioPlayer } from '../hooks/useAudioPlayer.jsx';
@@ -231,6 +231,7 @@ function Dashboard() {
         setError(null);
         initializedFromUrlRef.current = true;
         sessionStorage.setItem('lastBookId', bookId);
+        syncSavedChapters(chaptersWithText, { bookId, bookTitle: res.book.title, bookCoverUrl: res.book.cover_url });
         // Load audio for first chapter
         if (chaptersWithText[0]) loadChapterAudio(chaptersWithText[0]);
       } catch (err) {
@@ -270,6 +271,10 @@ function Dashboard() {
         if (!res?.success) return;
 
         setBookStatus(res);
+
+        if (res.book.status === 'completed') {
+          syncSavedChapters(book.chapters, { bookId: book.id, bookTitle: book.title, bookCoverUrl: book.coverUrl });
+        }
 
         setBook((b) => ({
           ...b,
@@ -432,6 +437,40 @@ function Dashboard() {
     }));
   };
 
+  // Every generated file is auto-saved to the Audio Library Downloads section —
+  // no user click required. Deduped against the server's download rows; a
+  // chapter is only logged once getChapterAudio confirms a completed generation.
+  // ponytail: one extra GET per chapter without a download row, retried next visit.
+  const savingChaptersRef = React.useRef(new Set());
+  const syncSavedChapters = React.useCallback(async (chapters, bookMeta) => {
+    const targets = (chapters || []).filter((ch) => ch?.chapterId && !savingChaptersRef.current.has(ch.chapterId));
+    if (!targets.length) return;
+    targets.forEach((ch) => savingChaptersRef.current.add(ch.chapterId));
+    try {
+      const { downloads } = await getDownloads();
+      const saved = new Set((downloads || []).map((d) => d.bookChapterId));
+      await Promise.all(targets.filter((ch) => !saved.has(ch.chapterId)).map(async (ch) => {
+        try {
+          await getChapterAudio(ch.chapterId);
+          const safe = (ch.title || 'Chapter').replace(/[\\/:*?"<>|]/g, '').trim() || 'Chapter';
+          await logExport({
+            bookId: bookMeta.bookId,
+            bookTitle: bookMeta.bookTitle || 'Untitled Book',
+            bookCoverUrl: bookMeta.bookCoverUrl,
+            fileName: `${safe}.mp3`,
+            fileFormat: 'mp3',
+            exportType: 'chapter',
+            bookChapterId: ch.chapterId,
+          });
+        } catch (err) {
+          savingChaptersRef.current.delete(ch.chapterId);
+        }
+      }));
+    } catch (err) {
+      console.error('[Dashboard] Auto-save to Downloads failed:', err);
+    }
+  }, []);
+
   const handleGenerate = async (config) => {
     if (config?.language) setSelectedLanguage(config.language);
     if (config?.voiceProfile) setSelectedVoice(config.voiceProfile);
@@ -458,6 +497,7 @@ function Dashboard() {
         });
         setAudioResult(result);
         setIsConfigOpen(false);
+        syncSavedChapters([chapter], { bookId: currentBookIdRef.current, bookTitle: book?.title, bookCoverUrl: book?.coverUrl });
       } catch (err) {
         const msg = err.response?.data?.error || err.message || 'Failed to generate audio';
         setError(msg);
@@ -585,17 +625,8 @@ function Dashboard() {
       const ext = blob.type === 'audio/mpeg' || blob.type === 'audio/mp3' ? 'mp3' : 'wav';
       // ponytail: 2000ms revoke delay so large binaries aren't cancelled mid-transfer
       downloadBlob(blob, `${safe}.${ext}`, 2000);
-      // Log export to history (non-blocking, fire-and-forget)
-      logExport({
-        bookId: currentBookIdRef.current,
-        bookTitle: book?.title || 'Untitled Book',
-        bookCoverUrl: book?.coverUrl,
-        fileName: `${safe}.${ext}`,
-        fileFormat: ext,
-        fileSize: blob.size,
-        exportType: 'chapter',
-        bookChapterId: chapter?.chapterId,
-      }).catch((err) => console.error('[Dashboard] Failed to log export:', err));
+      // Downloads record is auto-saved at generation time (syncSavedChapters) —
+      // logging again here would duplicate the row.
     } catch (err) {
       console.error('Export failed:', err);
       setError('Audio download failed — the link may have expired or CORS blocked it. Try again.');
