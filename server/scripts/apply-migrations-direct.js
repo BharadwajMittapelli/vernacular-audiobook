@@ -1,10 +1,3 @@
-/**
- * Apply Supabase migrations using the service role key
- * 
- * This script directly applies pending migrations to your Supabase database.
- * Run with: node server/scripts/apply-migrations-direct.js
- */
-
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -26,108 +19,104 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
 });
 
 // SQL migrations to apply
-const MIGRATIONS = `
--- Migration 005: Create chapters table
-create table if not exists public.chapters (
-  id uuid primary key default gen_random_uuid(),
-  book_id uuid not null references public.books(id) on delete cascade,
-  user_id uuid not null references public.users(id) on delete cascade,
-  sequence_number integer not null,
-  title text not null,
-  text_content text not null,
-  char_count integer not null,
-  estimated_duration_seconds integer not null default 0,
-  status text not null default 'pending',
-  created_at timestamptz not null default now()
-);
-
-create index if not exists chapters_book_id_sequence_number_idx
-  on public.chapters (book_id, sequence_number);
-
-alter table public.audio_generations
-  add column if not exists chapter_uuid uuid references public.chapters(id) on delete cascade;
-
-create index if not exists audio_generations_chapter_uuid_idx
-  on public.audio_generations (chapter_uuid);
-
-alter table public.chapters enable row level security;
-
--- Migration 006: Add book metadata columns
-ALTER TABLE public.books
-  ADD COLUMN IF NOT EXISTS title TEXT DEFAULT 'Untitled Book',
-  ADD COLUMN IF NOT EXISTS cover_url TEXT;
-
--- Migration 007: Add language columns
-ALTER TABLE public.books
-  ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en-IN';
-
-ALTER TABLE public.chapters
-  ADD COLUMN IF NOT EXISTS language TEXT NOT NULL DEFAULT 'en-IN';
-
-CREATE INDEX IF NOT EXISTS books_language_idx ON public.books (language);
-CREATE INDEX IF NOT EXISTS chapters_language_idx ON public.chapters (language);
-
--- Ensure mock user exists for development
-insert into public.users (id, email, credits)
-values ('00000000-0000-0000-0000-000000000001', 'mock@ekithab.local', 500)
-on conflict (id) do nothing;
-`;
+const MIGRATIONS = {
+  '009_create_downloads_table': {
+    sql: `
+      -- Migration 009: Create downloads table
+      create table if not exists public.downloads (
+        id uuid primary key default gen_random_uuid(),
+        user_id uuid not null references public.users(id) on delete cascade,
+        book_id uuid not null references public.books(id) on delete cascade,
+        chapter_id uuid references public.chapters(id) on delete cascade,
+        audio_url text not null,
+        created_at timestamptz not null default now(),
+        status text not null default 'pending'
+      );
+      
+      create index if not exists downloads_user_id_idx on public.downloads (user_id);
+      create index if not exists downloads_book_id_idx on public.downloads (book_id);
+      
+      alter table public.downloads enable row level security;
+    `,
+    description: 'Create downloads table for tracking audio downloads'
+  },
+  '011_create_playback_history': {
+    sql: `
+      -- Migration 011: Create playback history table
+      create table if not exists public.playback_history (
+        id uuid primary key default gen_random_uuid(),
+        user_id uuid not null references public.users(id) on delete cascade,
+        book_id uuid not null references public.books(id) on delete cascade,
+        chapter_id uuid not null references public.chapters(id) on delete cascade,
+        position_seconds integer not null default 0,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+      
+      create index if not exists playback_history_user_id_idx on public.playback_history (user_id);
+      create index if not exists playback_history_book_id_idx on public.playback_history (book_id);
+      create index if not exists playback_history_chapter_id_idx on public.playback_history (chapter_id);
+      
+      alter table public.playback_history enable row level security;
+    `,
+    description: 'Create playback history table for tracking user progress'
+  },
+  '012_create_favorites': {
+    sql: `
+      -- Migration 012: Create favorites table
+      create table if not exists public.favorites (
+        id uuid primary key default gen_random_uuid(),
+        user_id uuid not null references public.users(id) on delete cascade,
+        book_id uuid not null references public.books(id) on delete cascade,
+        created_at timestamptz not null default now()
+      );
+      
+      create unique index if not exists favorites_user_id_book_id_idx on public.favorites (user_id, book_id);
+      
+      alter table public.favorites enable row level security;
+    `,
+    description: 'Create favorites table for user bookmarks'
+  },
+  '014_add_chapter_normalization': {
+    sql: `
+      -- Migration 014: Add chapter normalization flag
+      alter table public.chapters
+        add column if not exists normalized boolean not null default false;
+      
+      create index if not exists chapters_normalized_idx on public.chapters (normalized);
+    `,
+    description: 'Add chapter normalization flag for JIT transcript optimization'
+  }
+};
 
 async function applyMigrations() {
   console.log('🚀 Applying Supabase migrations...');
   console.log(`📍 Database: ${SUPABASE_URL.replace(/\/\/.*@/, '//***:***@')}...`);
   console.log('================================\n');
-  
+
   try {
-    // Supabase REST API doesn't support arbitrary SQL directly
-    // We need to use the RPC or execute via PostgREST
-    
-    // Check current state first
-    console.log('📊 Checking current database state...\n');
-    
-    // Check books table columns
-    const { data: booksData, error: booksError } = await supabase
-      .from('books')
-      .select('*')
-      .limit(1);
-    
-    if (booksError) {
-      console.log(`books table error: ${booksError.message}`);
-    } else {
-      console.log('✅ books table exists');
-      if (booksData && booksData.length > 0) {
-        console.log(`   Sample row keys: ${Object.keys(booksData[0]).join(', ')}`);
+    // Apply each migration
+    for (const [name, migration] of Object.entries(MIGRATIONS)) {
+      console.log(`🔧 Applying migration ${name}: ${migration.description}`);
+      console.log('SQL:\n' + migration.sql.trim() + '\n');
+
+      const { error } = await supabase.rpc('execute_sql', {
+        sql: migration.sql
+      });
+
+      if (error) {
+        console.error(`❌ Error applying migration ${name}:`, error.message);
+        console.log('SQL that failed:\n' + migration.sql);
+        process.exit(1);
+      } else {
+        console.log(`✅ Successfully applied migration ${name}\n`);
       }
     }
-    
-    // Check chapters table
-    const { error: chaptersError } = await supabase
-      .from('chapters')
-      .select('*')
-      .limit(1);
-    
-    if (chaptersError && chaptersError.code === 'PGRST301') {
-      console.log('⚠️  chapters table does not exist - needs migration 005');
-    } else if (chaptersError) {
-      console.log(`chapters table error: ${chaptersError.message}`);
-    } else {
-      console.log('✅ chapters table exists');
-    }
-    
-    console.log('\n================================');
-    console.log('📋 MIGRATION SQL TO RUN:');
-    console.log('================================\n');
-    console.log(MIGRATIONS.trim());
-    console.log('\n================================');
-    console.log('Instructions:');
-    console.log('1. Open: https://app.supabase.com/project/znhhavbeqxoydojywttu/sql');
-    console.log('2. Copy the SQL above and paste it into the editor');
-    console.log('3. Click "Run"');
-    console.log('4. Verify success');
-    console.log('================================');
-    
+
+    console.log('\n✅ All migrations applied successfully!');
   } catch (err) {
-    console.error('❌ Error checking database:', err.message);
+    console.error('❌ Error applying migrations:', err.message);
+    process.exit(1);
   }
 }
 
