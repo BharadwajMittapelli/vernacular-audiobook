@@ -90,7 +90,7 @@ async function main() {
   if (needsMigration) {
     console.log('\n❌ MIGRATION REQUIRED');
     console.log('\nPlease run the following SQL in Supabase SQL Editor:');
-    console.log(`https://app.supabase.com/project/sgpkxgwnxusjagjnesir/sql\n`);
+    console.log(`https://app.supabase.com/project/znhhavbeqxoydojywttu/sql\n`);
     console.log('─'.repeat(60));
     console.log(`
 -- Migration 005: Create chapters table

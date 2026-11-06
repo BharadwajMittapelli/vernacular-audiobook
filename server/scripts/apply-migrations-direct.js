@@ -120,7 +120,7 @@ async function applyMigrations() {
     console.log(MIGRATIONS.trim());
     console.log('\n================================');
     console.log('Instructions:');
-    console.log('1. Open: https://app.supabase.com/project/sgpkxgwnxusjagjnesir/sql');
+    console.log('1. Open: https://app.supabase.com/project/znhhavbeqxoydojywttu/sql');
     console.log('2. Copy the SQL above and paste it into the editor');
     console.log('3. Click "Run"');
     console.log('4. Verify success');

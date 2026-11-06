@@ -88,7 +88,7 @@ async function main() {
   }
   
   console.log('\n✅ Migration SQL generated. Copy and paste into Supabase SQL Editor.');
-  console.log('   URL: https://app.supabase.com/project/sgpkxgwnxusjagjnesir/sql');
+  console.log('   URL: https://app.supabase.com/project/znhhavbeqxoydojywttu/sql');
 }
 
 main().catch(console.error);

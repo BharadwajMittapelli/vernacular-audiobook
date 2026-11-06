@@ -1,7 +1,7 @@
 -- =============================================
 -- SUPABASE MIGRATIONS FOR EKITHAB AUDIBOOK
 -- Run these in Supabase SQL Editor:
--- https://app.supabase.com/project/sgpkxgwnxusjagjnesir/sql
+-- https://app.supabase.com/project/znhhavbeqxoydojywttu/sql
 -- =============================================
 
 -- Migration 005: Create chapters table

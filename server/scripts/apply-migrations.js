@@ -160,7 +160,7 @@ async function applyMigrations() {
   console.log('================================');
   console.log(`✅ ${applied} migrations ready to apply`);
   console.log('\n📋 To apply these migrations:');
-  console.log('   1. Open: https://app.supabase.com/project/sgpkxgwnxusjagjnesir/sql');
+  console.log('   1. Open: https://app.supabase.com/project/znhhavbeqxoydojywttu/sql');
   console.log('   2. Copy the SQL below and paste it into the editor');
   console.log('   3. Click "Run"');
   console.log('   4. Restart the backend server\n');
@@ -170,7 +170,7 @@ async function generateSQL() {
   console.log('='.repeat(60));
   console.log('SUPABASE MIGRATION SQL');
   console.log('Copy and paste this into Supabase SQL Editor:');
-  console.log('https://app.supabase.com/project/sgpkxgwnxusjagjnesir/sql');
+  console.log('https://app.supabase.com/project/znhhavbeqxoydojywttu/sql');
   console.log('='.repeat(60));
   console.log();
   

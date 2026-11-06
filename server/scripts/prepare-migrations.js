@@ -24,7 +24,7 @@ function main() {
   console.log('='.repeat(60));
   console.log('SUPABASE MIGRATION SQL');
   console.log('Copy and paste the following into Supabase SQL Editor:');
-  console.log('https://app.supabase.com/project/sgpkxgwnxusjagjnesir/sql');
+  console.log('https://app.supabase.com/project/znhhavbeqxoydojywttu/sql');
   console.log('='.repeat(60));
   
   const migrationsDir = path.resolve(__dirname, '../migrations');
@@ -51,7 +51,7 @@ function main() {
   fs.writeFileSync(outputFile, combined, 'utf8');
   console.log(`\n✅ Saved to: ${outputFile}`);
   console.log('\nInstructions:');
-  console.log('1. Open https://app.supabase.com/project/sgpkxgwnxusjagjnesir/sql');
+  console.log('1. Open https://app.supabase.com/project/znhhavbeqxoydojywttu/sql');
   console.log('2. Paste the SQL above');
   console.log('3. Click "Run"');
   console.log('4. Restart the backend server');

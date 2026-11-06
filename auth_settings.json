@@ -1,7 +1,0 @@
-﻿{
-  "site_url": "https://vernacular-audiobook.vercel.app",
-  "redirect_urls": [
-    "https://vernacular-audiobook.vercel.app/auth/callback",
-    "http://localhost:5175/auth/callback"
-  ]
-}
