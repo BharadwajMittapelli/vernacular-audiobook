@@ -365,6 +365,19 @@ function Dashboard() {
     loadChapterAudio(book.chapters[idx]);
   };
 
+  // ponytail: the 5s synthesis poll only flips chapter.status — the player kept a
+  // dead play button until the chapter was re-clicked. Pull the finished audio in
+  // on the same-chapter →completed transition so the button enables by itself.
+  const lastChapterStatusRef = React.useRef(null);
+  React.useEffect(() => {
+    const cur = chapter ? { id: chapter.chapterId ?? chapter.id, status: chapter.status } : null;
+    const prev = lastChapterStatusRef.current;
+    lastChapterStatusRef.current = cur;
+    if (prev && cur && prev.id === cur.id && cur.status === 'completed' && prev.status !== 'completed' && !isFullBookAudio) {
+      loadChapterAudio(chapter);
+    }
+  }, [chapter]);
+
   // PUT response returns { title, char_count, ... } — merge into local state,
   // keeping both id keys (uploads create chapters with `id`, GET returns `chapterId`).
   const handleChapterSaved = (c) => {

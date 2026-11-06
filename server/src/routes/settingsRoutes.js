@@ -139,13 +139,17 @@ router.delete('/account', async (req, res) => {
       if (error) throw error;
     };
 
-    // Delete child rows first (service_role bypasses RLS)
+    // Delete child rows first (service_role bypasses RLS). users has PK id, not user_id.
     await deleteFrom('downloads');
+    await deleteFrom('playback_history');
+    await deleteFrom('favorites');
     await deleteFrom('credit_transactions');
     await deleteFrom('audio_generations');
     await deleteFrom('chapters');
     await deleteFrom('books');
-    await deleteFrom('users');
+    await deleteFrom('credits');
+    const { error: userDeleteError } = await supabase.from('users').delete().eq('id', userId);
+    if (userDeleteError) throw userDeleteError;
 
     // Remove the auth user (terminates all sessions)
     const { error: authError } = await supabase.auth.admin.deleteUser(userId);

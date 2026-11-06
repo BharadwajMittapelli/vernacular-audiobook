@@ -892,7 +892,7 @@ router.post('/chapters/:chapterId/synthesize', chapterTtsLimiter, async (req, re
     // Fetch and validate the chapter
     const { data: chapter, error: chapterError } = await supabase
       .from('chapters')
-      .select('id, text_content, char_count, status, normalized')
+      .select('id, book_id, text_content, char_count, status, normalized')
       .eq('id', chapterId)
       .eq('user_id', req.user.id)
       .single();
@@ -976,6 +976,7 @@ router.post('/chapters/:chapterId/synthesize', chapterTtsLimiter, async (req, re
       await supabase.from('audio_generations').insert({
         id: generationId,
         user_id: req.user.id,
+        book_id: chapter.book_id,
         chapter_id: chapterId,
         chapter_uuid: chapterId,
         language,
@@ -1065,34 +1066,21 @@ router.post('/:bookId/synthesize-all-mp3', async (req, res) => {
       totalCreditsNeeded += Math.ceil((ch.text_content?.length || 0) / 100);
     }
 
-    // Check credits
+    // Pre-flight balance check against the users.credits ledger column
     if (!isCreditBypassed()) {
-      const { data: userCredits } = await supabase
-        .from('credits')
-        .select('available_credits')
-        .eq('user_id', userId)
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('credits')
+        .eq('id', userId)
         .single();
 
-      if (!userCredits || userCredits.available_credits < totalCreditsNeeded) {
+      if (!userRow || userRow.credits < totalCreditsNeeded) {
         return res.status(402).json({
           success: false,
           error: 'Insufficient credits',
           required: totalCreditsNeeded,
-          available: userCredits?.available_credits || 0,
+          available: userRow?.credits || 0,
         });
-      }
-    }
-
-    // Deduct credits upfront
-    if (!isCreditBypassed()) {
-      const { error: deductError } = await supabase.rpc('deduct_credits', {
-        p_user_id: userId,
-        p_amount: totalCreditsNeeded,
-        p_description: `Full book synthesis: ${book.title}`,
-      });
-      if (deductError) {
-        console.error('[SynthesizeAll] Credit deduction failed:', deductError);
-        return res.status(500).json({ success: false, error: 'Credit deduction failed' });
       }
     }
 
@@ -1107,7 +1095,20 @@ router.post('/:bookId/synthesize-all-mp3', async (req, res) => {
       const ch = chaptersWithText[i];
       console.log(`[SynthesizeAll] Synthesizing chapter ${i + 1}/${chaptersWithText.length}: ${ch.title}`);
 
+      const generationId = uuidv4();
       const cleanText = stripMarkdown(ch.text_content);
+
+      if (!isCreditBypassed()) {
+        try {
+          await deductCredits(userId, cleanText.length, generationId);
+        } catch (deductErr) {
+          if (deductErr instanceof InsufficientCreditsError) {
+            throw new Error('Insufficient credits before chapter ' + ch.title);
+          }
+          throw deductErr;
+        }
+      }
+
       try {
         const result = await synthesizeText(cleanText, language, voiceProfile, speed);
         auditAudio(result.audioBuffer, cleanText, result.totalDuration);
@@ -1116,11 +1117,13 @@ router.post('/:bookId/synthesize-all-mp3', async (req, res) => {
         chunkDurations.push(result.totalDuration);
       } catch (err) {
         console.error(`[SynthesizeAll] Chapter ${ch.title} synthesis failed:`, err.message);
-        // Refund credits for failed chapter
+        // Refund the matching deduction for this chapter (same generationId + cost basis)
         if (!isCreditBypassed()) {
           try {
-            await refundCredits(userId, (ch.text_content?.length || 0), `refund-${ch.id}`);
-          } catch {}
+            await refundCredits(userId, cleanText.length, generationId);
+          } catch (refundErr) {
+            console.error('CRITICAL: refund failed during synthesize-all', { userId, generationId, error: refundErr.message });
+          }
         }
         throw new Error(`Chapter "${ch.title}" synthesis failed: ${err.message}`);
       }

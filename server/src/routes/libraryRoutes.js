@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { supabase } from '../config/supabase.js';
+import { supabase, AUDIO_BUCKET } from '../config/supabase.js';
 import { resolveAudioUrl, getSignedImageUrl } from '../services/storageService.js';
 
 const router = express.Router();
@@ -55,7 +55,8 @@ router.get('/all-audio', async (req, res) => {
     }
 
     // Query 3: chapter metadata for the generation rows (no status filter — generations are the source of truth)
-    const chapterIds = [...latestGenMap.keys()];
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const chapterIds = [...latestGenMap.keys()].filter((id) => id && isUuid.test(id));
     const { data: chapters, error: chaptersError } = chapterIds.length > 0
       ? await supabase
           .from('chapters')
@@ -176,6 +177,7 @@ router.post('/downloads/log', async (req, res) => {
         file_size_bytes: fileSize || null,
         export_type: exportType || 'full_book',
         book_chapter_id: bookChapterId || null,
+        exported_at: new Date().toISOString(),
       }])
       .select()
       .single();
@@ -384,7 +386,8 @@ router.get('/by-book', async (req, res) => {
     }
 
     // Query 4: chapter metadata for the generation rows
-    const chapterIds = [...latestGenMap.keys()];
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const chapterIds = [...latestGenMap.keys()].filter((id) => id && isUuid.test(id));
     const { data: chapters, error: chaptersError } = await supabase
       .from('chapters')
       .select('id, book_id, sequence_number, title, language, estimated_duration_seconds, created_at')
