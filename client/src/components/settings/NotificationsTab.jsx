@@ -35,7 +35,7 @@ export function NotificationsTab() {
   return (
     <div className="max-w-xl">
       <h2 className="text-lg font-semibold text-foreground mb-1">Notifications</h2>
-      <p className="text-sm text-muted-foreground mb-6">Manage how you receive updates from Ekithab AI.</p>
+      <p className="text-sm text-muted-foreground mb-6">Manage how you receive updates from Swar Studio.</p>
 
       <div className="space-y-4">
         {/* Email updates */}

@@ -1,7 +1,7 @@
 {
-  "name": "ekithab-audio-pipeline",
+  "name": "swar-studio-audio-pipeline",
   "version": "1.0.0",
-  "description": "Indic TTS Sync Engine - eKithab Audio Pipeline",
+  "description": "Indic TTS Sync Engine - Swar Studio Audio Pipeline",
   "private": true,
   "workspaces": [
     "client",

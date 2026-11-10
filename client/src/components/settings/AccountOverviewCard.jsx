@@ -60,7 +60,7 @@ export function AccountOverviewCard() {
           </svg>
           <span className="text-sm font-semibold text-foreground">Free Plan</span>
         </div>
-        <p className="text-xs text-muted-foreground">Get started with Ekithab AI</p>
+        <p className="text-xs text-muted-foreground">Get started with Swar Studio</p>
         <button className="mt-3 w-full py-2 rounded-lg bg-terracotta text-background text-sm font-semibold hover:opacity-90 transition-opacity">
           Upgrade Plan
         </button>

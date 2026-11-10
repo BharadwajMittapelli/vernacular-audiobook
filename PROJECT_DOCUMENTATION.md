@@ -1,4 +1,4 @@
-# eKithab Audio Pipeline — Complete Project Documentation
+# Swar Studio Audio Pipeline — Complete Project Documentation
 
 **Single source of truth.** All project specs, architecture, API contracts, and workflows in one file.
 
@@ -23,8 +23,8 @@
 
 ## 1. Product Requirements Document (PRD)
 
-**Project Name:** eKithab Audio (Indic Read-Along Engine)  
-**Objective:** Enable eKithab creators to convert text-based vernacular guides into synchronized, code-switched Indic audiobooks using Gnani.ai, catering to Tier-2/3 Indian demographics.
+**Project Name:** Swar Studio Audio (Indic Read-Along Engine)  
+**Objective:** Enable Swar Studio creators to convert text-based vernacular guides into synchronized, code-switched Indic audiobooks using Gnani.ai, catering to Tier-2/3 Indian demographics.
 
 **User Personas:**  
 1. **The Creator:** Domain expert who writes in vernacular languages and needs an instant, high-quality audio version of their eBook to upsell.  
@@ -37,7 +37,7 @@
 - Credit deduction mechanism mapped to character count (1 credit = 100 characters).
 
 **Out of Scope (MVP):**  
-- User account creation (assume hardcoded or passed via JWT from eKithab).  
+- User account creation (assume hardcoded or passed via JWT from Swar Studio).  
 - PDF/DOCX native parsing (assume plain Markdown/text input).  
 - Voice cloning (using pre-set Gnani personas only).
 
@@ -86,7 +86,7 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 ## 4. UI/UX Design Brief
 
 **Design System:** Tailwind CSS + Shadcn/UI + Lucide React Icons.  
-**Theme Strategy:** Minimalist, content-first. Default to eKithab's existing palette.
+**Theme Strategy:** Minimalist, content-first. Default to Swar Studio's existing palette.
 
 **Core Components:**  
 - **AudioConfigModal:** Glassmorphism overlay (`bg-background/80 backdrop-blur-sm`). Use Shadcn Select, Slider, and Button components.  
@@ -106,7 +106,7 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 **Database:** Supabase PostgreSQL.
 
 **Table 1: users** (Mocked for MVP)  
-- `id` (UUID, PK) - eKithab user ID  
+- `id` (UUID, PK) - Swar Studio user ID  
 - `email` (String, Unique) - User email  
 - `credits` (Integer) - Balance for audio generation (Default: 500)
 
@@ -114,7 +114,7 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 - `id` (UUID, PK) - Unique generation ID  
 - `user_id` (UUID, FK) - Creator ID  
 - `book_id` (String, Index) - Reference to book for async aggregation  
-- `chapter_id` (String, Index) - Reference to eKithab chapter  
+- `chapter_id` (String, Index) - Reference to Swar Studio chapter  
 - `audio_path` (String) - Storage path inside Supabase bucket (not a public URL)  
 - `language` (String) - e.g., 'hi-IN'  
 - `duration` (Float) - Total audio duration in seconds  
@@ -165,7 +165,7 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 - **Errors:** 404 if chapter not found.
 
 **Internal API: GET /api/credits**  
-- **Headers:** `Authorization: Bearer <eKithab-JWT>`  
+- **Headers:** `Authorization: Bearer <swar-studio-jwt>`  
 - **Response Payload:** `{ balance: number }`
 
 *Strict Rule:* This schema is immutable. The frontend must rely entirely on the `alignment` array to render UI highlights. Do not calculate UI timestamps on the client.
@@ -186,7 +186,7 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
    ```
    If row count = 0, reject with HTTP 402. No separate check-then-deduct.  
 4. **CORS:** Express server must restrict `Access-Control-Allow-Origin` strictly to the deployed Vercel frontend URL. Storefront embed endpoint uses wildcard `*` (public, no auth).  
-5. **Auth:** Every `/api/audio/*` request requires `Authorization: Bearer <eKithab-JWT>`. Middleware verifies signature and attaches `req.user.id`. Storefront embed is exempt (public).  
+5. **Auth:** Every `/api/audio/*` request requires `Authorization: Bearer <swar-studio-jwt>`. Middleware verifies signature and attaches `req.user.id`. Storefront embed is exempt (public).  
 6. **Idempotency:** `POST /api/audio/synthesize` requires `Idempotency-Key` header. Duplicate keys return existing `audio_generations` row (status check) without re-processing. The server inserts a `processing` placeholder row *before* running synthesis so a concurrent duplicate hits the unique constraint and polls. Async path scopes keys to `book_id`.  
 7. **Anti-Ripping:** Storage bucket set to Private. Client never receives a public URL — only time-limited signed URLs (1h TTL) generated per-request via `getSignedAudioUrl()`.  
 8. **Corrupted Output Prevention:** `auditAudio()` hard-gate runs between synthesis and upload. Checks: buffer size < 500 bytes, missing WAV/ID3/MPEG magic bytes, duration-vs-text ratio anomaly. Failed audits refund credits and mark the generation `status='failed'`.
@@ -265,7 +265,7 @@ Text Input → Express API → Text Sanitization & Chunking → Gnani.ai API →
 ## 11. System Architecture & File Tree
 
 ```text
-ekithab-audio-pipeline/
+swar-studio-audio-pipeline/
 ├── .kilo/
 │   └── rules                     # Master rule file
 ├── client/                        # DEV A SCOPE
@@ -300,7 +300,7 @@ ekithab-audio-pipeline/
     │   │   ├── storageService.js        # Signed URL upload/download
     │   │   └── textProcessor.js         # Markdown cleaner & sentence splitter
     │   ├── middleware/
-    │   │   ├── auth.js           # Verify eKithab JWT
+    │   │   ├── auth.js           # Verify Swar Studio JWT
     │   │   └── creditGuard.js    # Atomic credit deduction
     │   ├── queues/
     │   │   └── synthesisQueue.js # BullMQ queue + worker + in-memory fallback
@@ -432,5 +432,5 @@ Response:
 
 ---
 
-**License:** Proprietary - eKithab Project  
+**License:** Proprietary - Swar Studio Project  
 **Last Updated:** 2026-10-11

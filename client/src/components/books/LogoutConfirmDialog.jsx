@@ -64,7 +64,7 @@ export function LogoutConfirmDialog({ isOpen, onClose, onConfirm, loading }) {
 
         {/* Centered description */}
         <p className="text-sm text-center text-muted-foreground mb-8">
-          You will be signed out of your Ekithab AI account.
+          You will be signed out of your Swar Studio account.
         </p>
 
         {/* Two equal-width buttons */}

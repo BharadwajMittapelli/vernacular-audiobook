@@ -101,11 +101,11 @@ export default function LandingPage() {
       {/* Nav */}
       <nav className="sticky top-0 z-50 bg-background/80 backdrop-blur border-b border-border">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-serif text-xl font-semibold tracking-tight">
+          <div className="flex items-center gap-2 text-xl font-bold tracking-tight">
             <div className="w-8 h-8 rounded-lg bg-terracotta flex items-center justify-center shadow-sm">
               <BookOpen className="text-terracotta-foreground" size={18} />
             </div>
-            <span className="text-foreground">Ekithab AI</span>
+            <span className="text-foreground">Swar Studio</span>
           </div>
           <div className="hidden md:flex items-center gap-8 text-sm">
             <a {...navLink('production')} className="cursor-pointer">
@@ -163,7 +163,7 @@ export default function LandingPage() {
       <section className="max-w-5xl mx-auto px-6 mb-20">
         <img
           src="/hero-mockup.png"
-          alt="Ekithab AI audiobook creation interface showing synchronized reading with voice controls"
+          alt="Swar Studio audiobook creation interface showing synchronized reading with voice controls"
           className="w-full h-auto rounded-3xl border border-border shadow-sm"
         />
       </section>
@@ -491,7 +491,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="text-xs text-background/40 mt-6 text-center">
-            © 2026 Ekithab AI
+            © 2026 Swar Studio
           </div>
         </div>
       </footer>

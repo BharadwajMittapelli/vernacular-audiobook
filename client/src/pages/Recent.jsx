@@ -174,6 +174,7 @@ export default function Recent() {
         fileName: filename,
         fileFormat: ext,
         fileSize: res.data.size,
+        exportType: 'full_book',
       }).catch((err) => console.error('[Recent] Failed to log export:', err));
     } catch (err) {
       console.error('[Recent] Export failed:', err);

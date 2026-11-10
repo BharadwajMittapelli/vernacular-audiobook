@@ -55,7 +55,7 @@ export function AppSidebar({ activePath, onNavClick, credits, children, collapse
       <div className={`flex items-center justify-between px-5 h-14 border-b border-border shrink-0`}>
         <div className="flex items-center gap-3">
           <BookOpen className="h-6 w-6 text-terracotta shrink-0" />
-          {!collapsed && <span className="text-base font-bold text-foreground">Ekithab AI</span>}
+          {!collapsed && <span className="text-base font-bold text-foreground">Swar Studio</span>}
         </div>
         {!collapsed && (
           <button

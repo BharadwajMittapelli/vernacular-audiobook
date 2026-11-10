@@ -158,7 +158,7 @@ router.post('/downloads/log', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Missing required fields' });
   }
   const validExportTypes = ['full_book', 'chapter'];
-  if (!validExportTypes.includes(exportType)) {
+  if (exportType !== undefined && !validExportTypes.includes(exportType)) {
     return res.status(400).json({ success: false, error: 'Invalid exportType' });
   }
   if (exportType === 'chapter' && !bookChapterId) {

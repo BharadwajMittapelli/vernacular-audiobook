@@ -1,4 +1,4 @@
-# Project Rules - eKithab Audio Pipeline
+# Project Rules - Swar Studio Audio Pipeline
 
 ## Architecture
 - Decoupled monorepo: /client (Vite/React/TypeScript) and /server (Express/Node/TypeScript)

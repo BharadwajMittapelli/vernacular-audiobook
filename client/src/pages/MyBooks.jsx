@@ -151,6 +151,7 @@ export default function MyBooks() {
         fileName: filename,
         fileFormat: ext,
         fileSize: res.data.size,
+        exportType: 'full_book',
       }).catch((err) => console.error('[MyBooks] Failed to log export:', err));
     } catch (err) {
       console.error('[MyBooks] Export failed:', err);

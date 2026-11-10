@@ -42,7 +42,7 @@ export function HomeSidebar({ activePath, onNavClick, credits, fullName, email, 
         <div className="flex items-center gap-3 px-5 h-14 border-b border-border shrink-0">
           <BookOpen className="h-6 w-6 text-terracotta" />
           <div className="flex flex-col leading-none">
-            <span className="text-base font-bold tracking-tight text-foreground">Ekithab AI</span>
+            <span className="text-base font-bold tracking-tight text-foreground">Swar Studio</span>
             <span className="text-sm text-muted-foreground font-medium">Books. Voices. Anywhere.</span>
           </div>
         </div>

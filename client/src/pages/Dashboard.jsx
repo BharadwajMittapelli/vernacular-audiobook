@@ -531,19 +531,48 @@ function Dashboard() {
     setIsFullBookAudio(false);
 
     try {
-      const blob = await synthesizeAllMp3(book.id, {
+      const { blob, headers } = await synthesizeAllMp3(book.id, {
         language: selectedLanguage,
         voiceProfile: selectedVoice,
         speed,
       });
       console.log('[Dashboard] Received audio blob:', blob.size, 'bytes');
 
+      const persistedCount = headers?.get('X-Audio-Persisted') ? parseInt(headers.get('X-Audio-Persisted'), 10) : 0;
+      const totalCount = headers?.get('X-Audio-Total') ? parseInt(headers.get('X-Audio-Total'), 10) : (book.chapters?.length || 0);
+
       // Store the blob URL in state so the play button appears
       const url = URL.createObjectURL(blob);
       setAudioResult({ audioUrl: url, alignment: [] });
       setIsFullBookAudio(true);
 
-      setBulkStatus(`Generated ${book.chapters?.length || 0} chapters — click Export Package to download`);
+      if (persistedCount >= totalCount && totalCount > 0) {
+        setBulkStatus(`Generated ${persistedCount} chapters — saved to your Audio Library`);
+      } else if (persistedCount > 0) {
+        setBulkStatus(`Saved ${persistedCount} of ${totalCount} chapters to your Audio Library`);
+      } else {
+        setBulkStatus('Audio generation succeeded but no chapters were saved');
+      }
+
+      // Server persists chapters before streaming; refetch the book (this also
+      // refreshes chapter chips + book status and bumps last_opened_at).
+      try {
+        const fresh = await getBookDetails(book.id);
+        if (fresh?.success) {
+          setBook((b) => ({
+            ...b,
+            status: fresh.book?.status ?? b.status,
+            completed_chapters: fresh.book?.completed_chapters ?? b.completed_chapters,
+            chapters: b.chapters.map((ch) => {
+              const upd = (fresh.chapters || []).find((c) => c.id === ch.chapterId);
+              return upd ? { ...ch, status: upd.status } : ch;
+            }),
+          }));
+        }
+      } catch (err) {
+        console.warn('[Dashboard] Book refresh failed:', err, 'bookId:', book?.id);
+      }
+
       setTimeout(() => setBulkStatus(null), 5000);
     } catch (err) {
       console.error('[Dashboard] Full book synthesis failed:', err);
@@ -554,7 +583,6 @@ function Dashboard() {
       setIsGenerating(false);
     }
   };
-
   const handleSpatialGenerate = async () => {
     if (!chapter || isGenerating) return;
     setIsGenerating(true);
@@ -655,6 +683,15 @@ function Dashboard() {
         const blob = await res.blob();
         const ext = blob.type === 'audio/mpeg' || blob.type === 'audio/mp3' ? 'mp3' : 'wav';
         downloadBlob(blob, `${book?.title || 'audiobook'}.${ext}`, 2000);
+        logExport({
+          bookId: book?.id,
+          bookTitle: book?.title || 'Untitled Book',
+          bookCoverUrl: book?.coverUrl,
+          fileName: `${book?.title || 'audiobook'}.${ext}`,
+          fileFormat: ext,
+          fileSize: blob.size,
+          exportType: 'full_book',
+        }).catch((err) => console.error('[Dashboard] Failed to log export:', err));
         setBulkStatus('Download started');
         setTimeout(() => setBulkStatus(null), 3000);
         setIsExporting(false);
@@ -1024,7 +1061,7 @@ function Dashboard() {
       <div className="min-h-screen bg-background flex flex-col">
         <header className="border-b border-border bg-sidebar/50 h-14 flex items-center px-4">
           <div className="flex items-center gap-2.5">
-            <span className="text-lg font-bold tracking-tight text-foreground">Ekithab AI</span>
+            <span className="text-lg font-bold tracking-tight text-foreground">Swar Studio</span>
             <span className="text-xs text-muted-foreground font-medium">Audiobook</span>
           </div>
           <div className="ml-auto">

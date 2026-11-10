@@ -9,7 +9,7 @@ import { needsNormalization } from '../services/transcriptNormalizer.js';
 import { buildSilenceBuffer } from '../services/audioStitcher.js';
 import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
-import { unlink, writeFile } from 'fs/promises';
+import { unlink, writeFile, readFile } from 'fs/promises';
 import { resolve } from 'path';
 import { uploadAudio, resolveAudioUrl } from '../services/storageService.js';
 import { auditAudio } from '../services/audioAuditService.js';
@@ -1020,33 +1020,48 @@ router.post('/chapters/:chapterId/synthesize', chapterTtsLimiter, async (req, re
 });
 
 // POST /:bookId/synthesize-all-mp3 — synthesize all chapters and return a single merged MP3
+// ponytail: persisted to match /synthesize-all worker pattern
 router.post('/:bookId/synthesize-all-mp3', async (req, res) => {
+  const persistedResults = [];
+  const tempPaths = [];
+  const userId = req.user.id;
+
   try {
     const { bookId } = req.params;
-    const userId = req.user.id;
 
     // Verify book exists and belongs to user
     const { data: book, error: bookError } = await supabase
       .from('books')
-      .select('id, title, total_chapters')
+      .select('id, title, total_chapters, user_id')
       .eq('id', bookId)
       .eq('user_id', userId)
       .single();
 
     if (bookError || !book) {
-      return res.status(404).json({ success: false, error: 'Book not found' });
+      return res.status(404).json({ success: false, error: 'Book not found. It may have been deleted' });
     }
 
-    // Get all chapters for this book
+    // Get all chapters for this book with user_id for RLS compliance
     const { data: chapters, error: chaptersError } = await supabase
       .from('chapters')
-      .select('id, title, text_content, sequence_number')
+      .select('id, title, text_content, sequence_number, char_count, normalized, user_id')
       .eq('book_id', bookId)
+      .eq('user_id', userId)
       .order('sequence_number', { ascending: true });
 
     if (chaptersError) throw chaptersError;
     if (!chapters || chapters.length === 0) {
       return res.status(400).json({ success: false, error: 'No chapters found' });
+    }
+
+    // Pre-flight normalize check - fail if any chapter needs JIT normalization
+    const unnormalized = chapters.filter(ch => ch.normalized === false);
+    if (unnormalized.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'Chapters require script optimization before synthesis',
+        chapter_ids: unnormalized.map(c => c.id),
+      });
     }
 
     // Filter to chapters with content
@@ -1055,49 +1070,36 @@ router.post('/:bookId/synthesize-all-mp3', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No chapters with text content found' });
     }
 
-    // Get language from request or use default
+    // Get language from request
     const language = req.body?.language || 'hi-IN';
     const voiceProfile = req.body?.voiceProfile;
     const speed = req.body?.speed || 1.0;
 
-    // Calculate total credits needed
-    let totalCreditsNeeded = 0;
-    for (const ch of chaptersWithText) {
-      totalCreditsNeeded += Math.ceil((ch.text_content?.length || 0) / 100);
-    }
-
-    // Pre-flight balance check against the users.credits ledger column
+    // Pre-flight credit balance check
+    const totalCreditsNeeded = chaptersWithText.reduce((sum, ch) => sum + calculateCost(ch.char_count || 0), 0);
     if (!isCreditBypassed()) {
-      const { data: userRow } = await supabase
-        .from('users')
-        .select('credits')
-        .eq('id', userId)
-        .single();
-
+      const { data: userRow } = await supabase.from('users').select('credits').eq('id', userId).single();
       if (!userRow || userRow.credits < totalCreditsNeeded) {
-        return res.status(402).json({
-          success: false,
-          error: 'Insufficient credits',
-          required: totalCreditsNeeded,
-          available: userRow?.credits || 0,
-        });
+        return res.status(402).json({ success: false, error: 'Insufficient credits', required: totalCreditsNeeded, available: userRow?.credits || 0 });
       }
     }
 
-    // Synthesize each chapter and collect audio buffers
+    // Synthesize each chapter
     const audioBuffers = [];
     const chunkTimestamps = [];
     const chunkDurations = [];
-    const byteRate = 32000; // 16kHz mono 16-bit
-    const CHAPTER_PAUSE_MS = 500; // 500ms pause between chapters
+    const byteRate = 32000;
+    const CHAPTER_PAUSE_MS = 500;
 
     for (let i = 0; i < chaptersWithText.length; i++) {
       const ch = chaptersWithText[i];
-      console.log(`[SynthesizeAll] Synthesizing chapter ${i + 1}/${chaptersWithText.length}: ${ch.title}`);
+      console.log(`[SynthesizeAll] Chapter ${i + 1}/${chaptersWithText.length}: ${ch.title}`);
 
       const generationId = uuidv4();
       const cleanText = stripMarkdown(ch.text_content);
+      const creditsUsed = calculateCost(cleanText.length);
 
+      // Deduct credits per chapter
       if (!isCreditBypassed()) {
         try {
           await deductCredits(userId, cleanText.length, generationId);
@@ -1109,26 +1111,50 @@ router.post('/:bookId/synthesize-all-mp3', async (req, res) => {
         }
       }
 
+      // TTS synthesis
+      let result;
       try {
-        const result = await synthesizeText(cleanText, language, voiceProfile, speed);
+        result = await synthesizeText(cleanText, language, voiceProfile, speed);
         auditAudio(result.audioBuffer, cleanText, result.totalDuration);
+      } catch (synthErr) {
+        console.error(`[SynthesizeAll] TTS failed for ${ch.title}:`, synthErr.message);
+        if (!isCreditBypassed()) await refundCredits(userId, cleanText.length, generationId).catch(() => {});
+        throw synthErr;
+      }
+
+      // Upload to storage and insert audio_generations
+      try {
+        const { audioPath, signedAudioUrl } = await uploadAudio(result.audioBuffer, ch.id, result.source === 'gtts' ? 'mp3' : 'wav');
+
+        await supabase.from('audio_generations').insert({
+          id: generationId,
+          user_id: userId,
+          chapter_id: ch.id,
+          chapter_uuid: ch.id,
+          book_id: bookId,
+          language,
+          audio_url: signedAudioUrl,
+          audio_path: audioPath,
+          duration: result.totalDuration,
+          alignment: result.alignment,
+          credits_used: creditsUsed,
+          status: 'completed',
+          idempotency_key: crypto.randomUUID(),
+        });
+
+        await supabase.from('chapters').update({ status: 'completed' }).eq('id', ch.id).eq('book_id', bookId);
+        persistedResults.push(ch.id);
         audioBuffers.push(result.audioBuffer);
         chunkTimestamps.push(result.alignment.map(a => ({ start: a.start, end: a.end, word: a.word })));
         chunkDurations.push(result.totalDuration);
-      } catch (err) {
-        console.error(`[SynthesizeAll] Chapter ${ch.title} synthesis failed:`, err.message);
-        // Refund the matching deduction for this chapter (same generationId + cost basis)
-        if (!isCreditBypassed()) {
-          try {
-            await refundCredits(userId, cleanText.length, generationId);
-          } catch (refundErr) {
-            console.error('CRITICAL: refund failed during synthesize-all', { userId, generationId, error: refundErr.message });
-          }
-        }
-        throw new Error(`Chapter "${ch.title}" synthesis failed: ${err.message}`);
+      } catch (persistErr) {
+        console.error(`[SynthesizeAll] Persistence failed for ${ch.title}:`, persistErr.message);
+        if (!isCreditBypassed()) await refundCredits(userId, cleanText.length, generationId).catch(() => {});
+        await supabase.from('chapters').update({ status: 'failed' }).eq('id', ch.id).eq('book_id', bookId);
+        // Continue to next chapter instead of breaking
       }
 
-      // Add silence buffer between chapters (except after last)
+      // Silence buffer between chapters
       if (i < chaptersWithText.length - 1) {
         audioBuffers.push(buildSilenceBuffer(CHAPTER_PAUSE_MS, byteRate));
         chunkTimestamps.push([]);
@@ -1136,70 +1162,61 @@ router.post('/:bookId/synthesize-all-mp3', async (req, res) => {
       }
     }
 
-    // Stitch all buffers into single WAV
+    // Need at least one persisted chapter
+    if (persistedResults.length === 0) {
+      return res.status(500).json({ success: false, error: 'No chapters were successfully synthesized' });
+    }
+
+    // Stitch to WAV
     const { stitch } = await import('../services/audioStitcher.js');
-    const { mergedBuffer, cumulativeTimestamps, totalDuration } = stitch(
-      audioBuffers,
-      chunkTimestamps,
-      chunkDurations
-    );
+    const { mergedBuffer, totalDuration } = stitch(audioBuffers, chunkTimestamps, chunkDurations);
 
-    // Convert WAV to MP3 using ffmpeg
-    const ffmpeg = (await import('fluent-ffmpeg')).default;
-    const ffmpegPath = (await import('ffmpeg-static')).default;
-    ffmpeg.setFfmpegPath(ffmpegPath);
-    ffmpeg.setFfprobePath(ffmpegPath);
-
-    // Create temp file for ffmpeg input
+    // Convert to MP3 (before headers for streaming integrity)
     const tempWavPath = resolve(tmpdir(), `synthesis-all-${uuidv4()}.wav`);
+    const tempMp3Path = resolve(tmpdir(), `synthesis-all-${uuidv4()}.mp3`);
     await writeFile(tempWavPath, mergedBuffer);
+    tempPaths.push(tempWavPath, tempMp3Path);
 
-    // Set response headers
-    const safeFilename = (book.title || 'audiobook')
-      .replace(/[\\/:*?"<>|]/g, '')
-      .trim() || 'audiobook';
+    try {
+      const ffmpeg = (await import('fluent-ffmpeg')).default;
+      const ffmpegPath = (await import('ffmpeg-static')).default;
+      ffmpeg.setFfmpegPath(ffmpegPath);
+      await new Promise((resolve, reject) => {
+        ffmpeg(tempWavPath, tempMp3Path)
+          .outputFormat('mp3')
+          .audioBitrate(128)
+          .on('error', reject)
+          .on('end', resolve)
+          .run();
+      });
+    } catch (ffmpegErr) {
+      console.error('[SynthesizeAll] ffmpeg error:', ffmpegErr.message);
+      return res.status(500).json({ success: false, error: 'Failed to convert to MP3' });
+    }
 
+    const mp3Buffer = await readFile(tempMp3Path);
+
+    // Update book completion
+    const completedCount = persistedResults.length;
+    await supabase.from('books').update({ status: 'completed', completed_chapters: completedCount }).eq('id', bookId).eq('user_id', userId);
+
+    // Stream MP3 with headers
+    const safeFilename = (book.title || 'audiobook').replace(/[\\/:*?"<>|]/g, '').trim() || 'audiobook';
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.mp3"`);
     res.setHeader('Cache-Control', 'no-store');
-
-    const ffmpegProcess = ffmpeg();
-    ffmpegProcess
-      .input(tempWavPath)
-      .on('error', (err) => {
-        console.error('[SynthesizeAll] ffmpeg error:', err.message);
-        if (!res.headersSent) {
-          res.status(500).json({ success: false, error: 'Failed to convert to MP3' });
-        }
-      })
-      .on('end', async () => {
-        try {
-          await unlink(tempWavPath);
-        } catch {}
-        console.log(`[SynthesizeAll] Done: ${safeFilename}.mp3 (${totalDuration.toFixed(1)}s)`);
-      });
-
-    req.on('close', () => {
-      if (!res.headersSent) {
-        ffmpegProcess.kill('SIGTERM');
-      }
-      // Clean up temp file on client disconnect
-      unlink(tempWavPath).catch(() => {});
-    });
-
-    ffmpegProcess
-      .outputFormat('mp3')
-      .audioBitrate(128)
-      .pipe(res, { end: true });
+    res.setHeader('X-Audio-Persisted', String(completedCount));
+    res.setHeader('X-Audio-Total', String(chaptersWithText.length));
+    res.status(200).send(mp3Buffer);
+    console.log(`[SynthesizeAll] ${completedCount}/${chaptersWithText.length} persisted, ${safeFilename}.mp3`);
 
   } catch (error) {
     console.error('POST /studio/:bookId/synthesize-all-mp3 error:', error);
     if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        error: error.message || 'Full book synthesis failed',
-      });
+      res.status(500).json({ success: false, error: error.message || 'Full book synthesis failed' });
     }
+  } finally {
+    for (const p of tempPaths) await unlink(p).catch(() => {});
   }
 });
 

@@ -63,11 +63,11 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border bg-sidebar/50 h-14 flex items-center px-4">
-        <div className="flex items-center gap-2 font-serif text-xl font-semibold tracking-tight">
+        <div className="flex items-center gap-2 text-xl font-bold tracking-tight">
           <div className="w-8 h-8 rounded-lg bg-terracotta flex items-center justify-center shadow-sm">
             <BookOpen className="text-terracotta-foreground" size={18} />
           </div>
-          <span className="text-foreground">Ekithab AI</span>
+          <span className="text-foreground">Swar Studio</span>
         </div>
       </header>
       <main className="flex-1 flex items-center justify-center p-4">

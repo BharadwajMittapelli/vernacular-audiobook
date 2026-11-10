@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 import { supabase } from '../lib/supabaseClient';
 import { fetchWithRetry, RequestQueue, RateLimitError } from '../utils/rateLimitRetry.js';
 
@@ -194,7 +194,10 @@ export function synthesizeAllMp3(bookId, options = {}) {
       throw new Error(data.error || `HTTP ${res.status}`);
     }
 
-    return res.blob();
+    // Return the blob alongside the raw Response headers so callers can read
+    // persistence metadata (X-Audio-Persisted / X-Audio-Total) without a
+    // second request. Backward compatible: the blob is on lob.
+    return { blob: await res.blob(), headers: res.headers };
   });
 }
 

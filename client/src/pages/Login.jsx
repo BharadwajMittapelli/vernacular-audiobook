@@ -30,7 +30,7 @@ export default function Login() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border bg-sidebar/50 h-14 flex items-center px-4">
         <div className="flex items-center gap-2.5">
-          <span className="text-lg font-bold tracking-tight text-foreground">Ekithab AI</span>
+          <span className="text-lg font-bold tracking-tight text-foreground">Swar Studio</span>
           <span className="text-xs text-muted-foreground font-medium">Audiobook</span>
         </div>
       </header>
